@@ -1114,7 +1114,7 @@ async function buildNarratorDossiers(context: NarratorRuntimeContext): Promise<s
 			}
 
 			const isDisabled = currentGroup.disabled_members.includes(avatar);
-			if (isDisabled && avatar !== narratorAvatar && !settings.includeDisabledMembers) {
+			if (isDisabled && !settings.includeDisabledMembers) {
 				continue;
 			}
 
@@ -1122,10 +1122,6 @@ async function buildNarratorDossiers(context: NarratorRuntimeContext): Promise<s
 		}
 	} else {
 		orderedMembers.push(currentCharacter);
-	}
-
-	if (!orderedMembers.some((character) => character.avatar === narratorAvatar)) {
-		orderedMembers.unshift(currentCharacter);
 	}
 
 	const dossiers: string[] = [];
@@ -1418,8 +1414,11 @@ function registerEventHandlers(): void {
 	const eventTypes = context.eventTypes ?? context.event_types;
 
 	if (!eventSource || !eventTypes) {
+		logWarn('registerEventHandlers: eventSource or eventTypes unavailable.');
 		return;
 	}
+
+	logInfo('registerEventHandlers: available event types:', Object.keys(eventTypes));
 
 	const watchedEvents = [
 		eventTypes.APP_READY,
@@ -1434,19 +1433,29 @@ function registerEventHandlers(): void {
 		eventTypes.GROUP_MEMBER_DRAFTED,
 	].filter(Boolean) as string[];
 
+	logInfo(`registerEventHandlers: registered ${watchedEvents.length} watched events.`);
+
 	for (const eventName of watchedEvents) {
 		eventSource.on(eventName, () => {
 			scheduleRefresh();
 		});
 	}
 
-	eventSource.on(eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
-		const ctx = getRuntimeContext();
-		logInfo(`GENERATE_BEFORE_COMBINE_PROMPTS: groupId=${ctx.groupId}, this_chid=${ctx.this_chid}, characterId=${ctx.characterId}`);
-		logInfo(`GENERATE_BEFORE_COMBINE_PROMPTS: eventSource available=${!!ctx.eventSource}, emit available=${!!ctx.eventSource?.emit}`);
-		logInfo(`GENERATE_BEFORE_COMBINE_PROMPTS: loadWorldInfo available=${!!ctx.loadWorldInfo}`);
-		void forceActivateGroupLorebooks(ctx);
-	});
+	const generateEvent = eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS;
+	logInfo(`registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS event type = "${generateEvent ?? '(undefined)'}"`);
+
+	if (generateEvent) {
+		eventSource.on(generateEvent, () => {
+			const ctx = getRuntimeContext();
+			logInfo(`GENERATE_BEFORE_COMBINE_PROMPTS fired: groupId=${ctx.groupId}, this_chid=${ctx.this_chid}, characterId=${ctx.characterId}`);
+			logInfo(`GENERATE_BEFORE_COMBINE_PROMPTS: eventSource=${!!ctx.eventSource}, emit=${!!ctx.eventSource?.emit}, loadWorldInfo=${!!ctx.loadWorldInfo}`);
+			void forceActivateGroupLorebooks(ctx);
+		});
+		logInfo('registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS handler registered.');
+	} else {
+		logWarn('registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS event type not found in eventTypes!');
+		logInfo('registerEventHandlers: searching for generation-related events:', Object.keys(eventTypes).filter((k) => k.includes('GENERATE') || k.includes('COMBINE') || k.includes('PROMPT')));
+	}
 
 	eventSource.on(eventTypes.CHARACTER_EDITED, () => {
 		logInfo('CHARACTER_EDITED event received, attempting to inject narrator button.');
