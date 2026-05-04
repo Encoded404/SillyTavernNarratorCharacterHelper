@@ -184,9 +184,50 @@ let refreshTimer = 0;
 let panelElement: HTMLElement | null = null;
 let panelToggleButton: HTMLElement | null = null;
 
+function logInfo(message: string, data?: unknown): void {
+	if (data === undefined) {
+		console.info(`[Narrator Helper] ${message}`);
+		return;
+	}
+
+	console.info(`[Narrator Helper] ${message}`, data);
+}
+
+function logWarn(message: string, data?: unknown): void {
+	if (data === undefined) {
+		console.warn(`[Narrator Helper] ${message}`);
+		return;
+	}
+
+	console.warn(`[Narrator Helper] ${message}`, data);
+}
+
+function logError(message: string, error?: unknown): void {
+	if (error === undefined) {
+		console.error(`[Narrator Helper] ${message}`);
+		return;
+	}
+
+	console.error(`[Narrator Helper] ${message}`, error);
+}
+
 function getRuntimeContext(): NarratorRuntimeContext {
 	const sillyTavern = (globalThis as unknown as { SillyTavern?: { getContext?: () => NarratorRuntimeContext } }).SillyTavern;
 	return sillyTavern?.getContext?.() ?? {};
+}
+
+function describeMissingRuntimePieces(context: NarratorRuntimeContext): string[] {
+	const missingPieces: string[] = [];
+
+	if (!context.setExtensionPrompt) missingPieces.push('setExtensionPrompt');
+	if (!context.SlashCommandParser) missingPieces.push('SlashCommandParser');
+	if (!context.SlashCommand) missingPieces.push('SlashCommand');
+	if (!context.SlashCommandNamedArgument) missingPieces.push('SlashCommandNamedArgument');
+	if (!context.SlashCommandArgument) missingPieces.push('SlashCommandArgument');
+	if (!context.writeExtensionField) missingPieces.push('writeExtensionField');
+	if (!context.eventSource) missingPieces.push('eventSource');
+
+	return missingPieces;
 }
 
 function getExtensionSettings(context: NarratorRuntimeContext): NarratorSettings {
@@ -1362,11 +1403,19 @@ function renderPanel(): void {
 
 async function bootstrap(): Promise<void> {
 	if (bootstrapped) {
+		logInfo('bootstrap skipped because the extension is already initialized.');
 		return;
 	}
 
+	logInfo('bootstrap started.');
 	const context = getRuntimeContext();
+	const missingPieces = describeMissingRuntimePieces(context);
+	if (missingPieces.length) {
+		logWarn('runtime context is missing pieces that the extension can use later:', missingPieces);
+	}
+
 	if (!context.SlashCommandParser || !context.SlashCommand || !context.setExtensionPrompt) {
+		logWarn('waiting for SillyTavern runtime hooks before finishing initialization.');
 		window.setTimeout(() => {
 			void bootstrap();
 		}, 500);
@@ -1374,12 +1423,24 @@ async function bootstrap(): Promise<void> {
 	}
 
 	bootstrapped = true;
+	logInfo('runtime hooks detected; initializing UI, prompt pipeline, and slash command.');
 	injectStyles();
 	ensurePanel();
 	ensureMenuButton();
 	registerEventHandlers();
-	await registerSlashCommand();
-	await syncNarratorPrompt();
+	try {
+		await registerSlashCommand();
+		logInfo('slash command registered: /narrator');
+	} catch (error) {
+		logError('failed to register slash command.', error);
+	}
+
+	try {
+		const prompt = await syncNarratorPrompt();
+		logInfo(prompt ? 'initial narrator prompt synced.' : 'no narrator prompt was injected because no active narrator is marked.');
+	} catch (error) {
+		logError('failed to sync narrator prompt during bootstrap.', error);
+	}
 	renderPanel();
 
 	const menuWatcher = window.setInterval(() => {
@@ -1391,10 +1452,13 @@ async function bootstrap(): Promise<void> {
 	const appReadyEvent = context.eventTypes?.APP_READY ?? context.event_types?.APP_READY;
 	if (appReadyEvent && context.eventSource) {
 		context.eventSource.on(appReadyEvent, () => {
+			logInfo('APP_READY received; refreshing narrator helper state.');
 			ensureMenuButton();
 			renderPanel();
-			void syncNarratorPrompt();
+			void syncNarratorPrompt().catch((error) => logError('failed to sync narrator prompt after APP_READY.', error));
 		});
+	} else {
+		logWarn('APP_READY hook was not registered because event source or event type map is unavailable.');
 	}
 }
 
