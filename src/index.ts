@@ -200,6 +200,7 @@ type CharLoreSetting = {
 
 const MODULE_NAME = 'narrator_character_helper';
 const MODULE_BRIEFING = `${MODULE_NAME}_briefing`;
+const MODULE_ROSTER = `${MODULE_NAME}_roster`;
 const MODULE_DOSSIERS = `${MODULE_NAME}_dossiers`;
 const MODULE_META = `${MODULE_NAME}_meta`;
 const DEFAULT_PROMPT_HEADER = 'Omniscient Narrator Briefing';
@@ -749,6 +750,8 @@ function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext): Set<st
 	const group = getCurrentGroup(context);
 	const characters = getCharacters(context);
 
+	logInfo(`getAllGroupMemberLorebookNames: groupId=${context.groupId}, groupMembers=${group?.members?.length ?? 0}, characters=${characters.length}`);
+
 	if (!group) {
 		return lorebooks;
 	}
@@ -757,10 +760,14 @@ function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext): Set<st
 
 	for (const avatar of memberAvatars) {
 		const character = characters.find((c) => c.avatar === avatar);
-		if (!character) continue;
+		if (!character) {
+			logInfo(`getAllGroupMemberLorebookNames: no character found for avatar "${avatar}"`);
+			continue;
+		}
 
 		if (character.data?.extensions?.world) {
 			lorebooks.add(character.data.extensions.world);
+			logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has primary lorebook "${character.data.extensions.world}"`);
 		}
 
 		const extensionSettings = (globalThis as unknown as { extension_settings?: Record<string, unknown> }).extension_settings as Record<string, unknown> | undefined;
@@ -770,7 +777,10 @@ function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext): Set<st
 			const charExtra = charLore.find((e) => e.name === avatar);
 			if (charExtra?.extraBooks && Array.isArray(charExtra.extraBooks)) {
 				for (const book of charExtra.extraBooks) {
-					if (book) lorebooks.add(book);
+					if (book) {
+						lorebooks.add(book);
+						logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has extra lorebook "${book}"`);
+					}
 				}
 			}
 		}
@@ -781,6 +791,7 @@ function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext): Set<st
 
 async function forceActivateGroupLorebooks(context: NarratorRuntimeContext): Promise<void> {
 	const lorebookNames = getAllGroupMemberLorebookNames(context);
+	logInfo(`forceActivateGroupLorebooks: found ${lorebookNames.size} lorebook names: ${[...lorebookNames].join(', ')}`);
 	if (lorebookNames.size === 0) {
 		return;
 	}
@@ -793,19 +804,25 @@ async function forceActivateGroupLorebooks(context: NarratorRuntimeContext): Pro
 			alreadyActive.add(name);
 		}
 	}
+	logInfo(`forceActivateGroupLorebooks: ${alreadyActive.size} lorebooks already active globally: ${[...alreadyActive].join(', ')}`);
 
 	const entriesToActivate: WorldInfoForceActivateEntry[] = [];
 
 	for (const bookName of lorebookNames) {
 		if (alreadyActive.has(bookName)) {
+			logInfo(`forceActivateGroupLorebooks: skipping "${bookName}" (already active globally).`);
 			continue;
 		}
 
 		const loader = context.loadWorldInfo;
-		if (typeof loader !== 'function') continue;
+		if (typeof loader !== 'function') {
+			logWarn(`forceActivateGroupLorebooks: loadWorldInfo not available, skipping "${bookName}".`);
+			continue;
+		}
 
 		try {
 			const data = await loader(bookName);
+			logInfo(`forceActivateGroupLorebooks: loaded "${bookName}", has ${Object.keys(data?.entries ?? {}).length} entries.`);
 			if (!data?.entries) continue;
 
 			for (const [uid, entry] of Object.entries(data.entries)) {
@@ -820,9 +837,14 @@ async function forceActivateGroupLorebooks(context: NarratorRuntimeContext): Pro
 		}
 	}
 
+	logInfo(`forceActivateGroupLorebooks: ${entriesToActivate.length} entries collected for force activation.`);
+
 	if (entriesToActivate.length > 0 && context.eventSource?.emit) {
-		logInfo(`Force-activating ${entriesToActivate.length} World Info entries from ${lorebookNames.size} lorebooks.`);
+		logInfo(`forceActivateGroupLorebooks: emitting WORLDINFO_FORCE_ACTIVATE with ${entriesToActivate.length} entries.`);
 		await context.eventSource.emit('WORLDINFO_FORCE_ACTIVATE', entriesToActivate);
+		logInfo('forceActivateGroupLorebooks: WORLDINFO_FORCE_ACTIVATE emitted successfully.');
+	} else {
+		logWarn(`forceActivateGroupLorebooks: could not emit event. eventSource=${!!context.eventSource}, emit=${!!context.eventSource?.emit}, entries=${entriesToActivate.length}`);
 	}
 }
 
@@ -866,24 +888,25 @@ function getCurrentGroup(context: NarratorRuntimeContext): GroupRecord | undefin
 }
 
 function getNarratorState(character: CharacterRecord | undefined): NarratorCharacterState | null {
-	const state = character?.data?.extensions?.narrator_character_helper;
-	if (state === undefined || state === null) {
+	const rawState = character?.data?.extensions?.narrator_character_helper;
+	logInfo(`getNarratorState for "${character?.name ?? 'unknown'}": rawState type=${typeof rawState}, value=${JSON.stringify(rawState)}`);
+	if (rawState === undefined || rawState === null) {
 		return null;
 	}
 
-	if (typeof state === 'boolean') {
+	if (typeof rawState === 'boolean') {
 		return {
-			enabled: state,
+			enabled: rawState,
 			instructions: '',
 			updatedAt: '',
 		};
 	}
 
-	if (typeof state !== 'object') {
+	if (typeof rawState !== 'object') {
 		return null;
 	}
 
-	const record = state as Partial<NarratorCharacterState>;
+	const record = rawState as Partial<NarratorCharacterState>;
 	return {
 		enabled: Boolean(record.enabled),
 		instructions: String(record.instructions ?? ''),
@@ -1182,22 +1205,20 @@ async function syncNarratorPrompt(): Promise<void> {
 	]);
 
 	setExtensionPrompt(MODULE_BRIEFING, briefing, settings.promptPosition, settings.promptDepth, false, 0);
+	setExtensionPrompt(MODULE_ROSTER, roster, settings.promptPosition, settings.promptDepth, false, 0);
 	setExtensionPrompt(MODULE_DOSSIERS, dossiers, settings.promptPosition, settings.promptDepth, false, 0);
 	setExtensionPrompt(MODULE_META, meta, settings.promptPosition, settings.promptDepth, false, 0);
-
-	const hasContent = briefing || roster || dossiers || meta;
-	if (hasContent) {
-		const combined = [briefing, roster, dossiers, meta].filter(Boolean).join('\n\n');
-		setExtensionPrompt(MODULE_NAME, combined, settings.promptPosition, settings.promptDepth, false, 0);
-	} else {
-		setExtensionPrompt(MODULE_NAME, '', settings.promptPosition, settings.promptDepth, false, 0);
-	}
 }
 
 async function writeNarratorState(characterId: number, enabled: boolean, instructions: string): Promise<void> {
 	const context = getRuntimeContext();
 	const character = getCharacters(context)[characterId];
-	if (!character || typeof context.writeExtensionField !== 'function') {
+	if (!character) {
+		logWarn(`writeNarratorState: character at index ${characterId} not found.`);
+		return;
+	}
+	if (typeof context.writeExtensionField !== 'function') {
+		logWarn('writeNarratorState: writeExtensionField not available.');
 		return;
 	}
 
@@ -1208,13 +1229,18 @@ async function writeNarratorState(characterId: number, enabled: boolean, instruc
 		updatedAt: new Date().toISOString(),
 	};
 
+	logInfo(`writeNarratorState: character="${character.name}", avatar="${character.avatar}", enabled=${enabled}, instructions length=${updatedState.instructions.length}`);
+
 	if (!enabled && !updatedState.instructions && !previousState?.instructions) {
 		const unsetValue = context.constants?.unset ?? '__@@UNSET@@__';
+		logInfo('writeNarratorState: writing unset value.');
 		await context.writeExtensionField(characterId, MODULE_NAME, unsetValue);
 	} else {
+		logInfo('writeNarratorState: writing state object.');
 		await context.writeExtensionField(characterId, MODULE_NAME, updatedState);
 	}
 
+	logInfo('writeNarratorState: calling syncNarratorPrompt.');
 	await syncNarratorPrompt();
 }
 
@@ -1412,6 +1438,7 @@ function registerEventHandlers(): void {
 
 	eventSource.on(eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
 		const ctx = getRuntimeContext();
+		logInfo(`GENERATE_BEFORE_COMBINE_PROMPTS: groupId=${ctx.groupId}, this_chid=${ctx.this_chid}, characterId=${ctx.characterId}`);
 		void forceActivateGroupLorebooks(ctx);
 	});
 
