@@ -199,6 +199,9 @@ type CharLoreSetting = {
 };
 
 const MODULE_NAME = 'narrator_character_helper';
+const MODULE_BRIEFING = `${MODULE_NAME}_briefing`;
+const MODULE_DOSSIERS = `${MODULE_NAME}_dossiers`;
+const MODULE_META = `${MODULE_NAME}_meta`;
 const DEFAULT_PROMPT_HEADER = 'Omniscient Narrator Briefing';
 
 const DEFAULT_TEMPLATES: TemplateSettings = {
@@ -896,23 +899,6 @@ function normalizeText(value: unknown): string {
 	return value.trim();
 }
 
-function truncateText(value: string, maxLength: number): string {
-	const text = value.trim();
-	if (!text || text.length <= maxLength) {
-		return text;
-	}
-
-	return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
-}
-
-function replaceCommonMacros(text: string, characterName: string, context: NarratorRuntimeContext): string {
-	const userName = normalizeText(context.name1) || 'User';
-	return text
-		.replace(/\{\{\s*char\s*\}\}/gi, characterName)
-		.replace(/\{\{\s*name\s*\}\}/gi, characterName)
-		.replace(/\{\{\s*user\s*\}\}/gi, userName);
-}
-
 function formatListItem(label: string, value: string): string {
 	const text = normalizeText(value);
 	if (!text) {
@@ -920,48 +906,6 @@ function formatListItem(label: string, value: string): string {
 	}
 
 	return `- ${label}: ${text}`;
-}
-
-function summarizeEntries(entries: WorldInfoBookEntry[], limit: number, maxLength: number, characterName: string, context: NarratorRuntimeContext): string {
-	if (!entries.length) {
-		return '';
-	}
-
-	const previewLines: string[] = [];
-	for (const entry of entries.slice(0, limit)) {
-		const keyList = Array.isArray(entry.keys) ? entry.keys : Array.isArray(entry.key) ? entry.key : [];
-		const comment = normalizeText(entry.comment ?? '');
-		const content = truncateText(replaceCommonMacros(normalizeText(entry.content), characterName, context), maxLength);
-		const headerParts = [keyList.length ? keyList.join(', ') : 'entry'];
-
-		if (comment) {
-			headerParts.push(comment);
-		}
-
-		previewLines.push(`- ${headerParts.join(' | ')}`);
-
-		if (content) {
-			previewLines.push(`  Content: ${content}`);
-		}
-	}
-
-	if (entries.length > limit) {
-		previewLines.push(`- ... ${entries.length - limit} more entr${entries.length - limit === 1 ? 'y' : 'ies'} omitted`);
-	}
-
-	return previewLines.join('\n');
-}
-
-function getBookEntries(book: WorldInfoBook | undefined): WorldInfoBookEntry[] {
-	if (!book?.entries) {
-		return [];
-	}
-
-	if (Array.isArray(book.entries)) {
-		return book.entries.filter((entry): entry is WorldInfoBookEntry => Boolean(entry));
-	}
-
-	return Object.values(book.entries).filter((entry): entry is WorldInfoBookEntry => Boolean(entry));
 }
 
 function buildCharacterDossier(context: NarratorRuntimeContext, character: CharacterRecord, settings: NarratorSettings): string {
@@ -1009,24 +953,6 @@ function buildCharacterDossier(context: NarratorRuntimeContext, character: Chara
 		sections.push(formatListItem('Tags', tags.join(', ')));
 	}
 
-	if (settings.includeCharacterBook) {
-		const characterBook = characterData.character_book;
-		const bookEntries = getBookEntries(characterBook);
-		if (bookEntries.length) {
-			sections.push([
-				`Character book: ${normalizeText(characterBook?.name) || 'embedded character book'} (${bookEntries.length} entr${bookEntries.length === 1 ? 'y' : 'ies'})`,
-				summarizeEntries(bookEntries, settings.maxBookEntries, settings.maxBookEntryLength, characterName, context),
-			].filter(Boolean).join('\n'));
-		}
-	}
-
-	if (settings.includeLinkedWorldInfo) {
-		const linkedWorldInfo = normalizeText(characterData.extensions?.world);
-		if (linkedWorldInfo) {
-			sections.push(`Linked lorebook "${linkedWorldInfo}" is active via native World Info system.`);
-		}
-	}
-
 	const narratorState = getNarratorState(character);
 	if (narratorState?.instructions) {
 		sections.push([
@@ -1038,7 +964,31 @@ function buildCharacterDossier(context: NarratorRuntimeContext, character: Chara
 	return sections.filter((section) => normalizeText(section)).join('\n\n');
 }
 
-async function buildNarratorPrompt(context: NarratorRuntimeContext): Promise<string> {
+async function buildNarratorBriefing(context: NarratorRuntimeContext): Promise<string> {
+	const settings = getExtensionSettings(context);
+	const currentCharacter = getCurrentCharacter(context);
+	if (!currentCharacter) {
+		return '';
+	}
+
+	const narratorState = getNarratorState(currentCharacter);
+	if (!narratorState?.enabled) {
+		return '';
+	}
+
+	const currentGroup = getCurrentGroup(context);
+
+	const promptLines = [
+		`[${settings.promptTitle || DEFAULT_PROMPT_HEADER}]`,
+		`This is private context for the narrator character ${currentCharacter.name}.`,
+		currentGroup ? `Current group: ${currentGroup.name}` : 'No group is selected. Only the narrator character dossier is available.',
+		'Use the dossiers below to make the narrator all-knowing about the current group without exposing this briefing verbatim.',
+	];
+
+	return promptLines.filter(Boolean).join('\n');
+}
+
+async function buildNarratorRoster(context: NarratorRuntimeContext): Promise<string> {
 	const settings = getExtensionSettings(context);
 	const currentCharacter = getCurrentCharacter(context);
 	if (!currentCharacter) {
@@ -1090,6 +1040,57 @@ async function buildNarratorPrompt(context: NarratorRuntimeContext): Promise<str
 		return `- ${character.name} (${roleLabel}${disabledLabel})`;
 	});
 
+	const lines = [
+		'Roster:',
+		...rosters,
+		'',
+		'Briefing:',
+		narratorState.instructions.trim() || DEFAULT_NARRATOR_INSTRUCTIONS,
+	];
+
+	return lines.join('\n');
+}
+
+async function buildNarratorDossiers(context: NarratorRuntimeContext): Promise<string> {
+	const settings = getExtensionSettings(context);
+	const currentCharacter = getCurrentCharacter(context);
+	if (!currentCharacter) {
+		return '';
+	}
+
+	const narratorState = getNarratorState(currentCharacter);
+	if (!narratorState?.enabled) {
+		return '';
+	}
+
+	const currentGroup = getCurrentGroup(context);
+	const characters = getCharacters(context);
+	const groupMembers = currentGroup?.members ?? [];
+	const narratorAvatar = currentCharacter.avatar;
+
+	const orderedMembers: CharacterRecord[] = [];
+	if (currentGroup) {
+		for (const avatar of groupMembers) {
+			const character = characters.find((candidate) => candidate.avatar === avatar);
+			if (!character) {
+				continue;
+			}
+
+			const isDisabled = currentGroup.disabled_members.includes(avatar);
+			if (isDisabled && avatar !== narratorAvatar && !settings.includeDisabledMembers) {
+				continue;
+			}
+
+			orderedMembers.push(character);
+		}
+	} else {
+		orderedMembers.push(currentCharacter);
+	}
+
+	if (!orderedMembers.some((character) => character.avatar === narratorAvatar)) {
+		orderedMembers.unshift(currentCharacter);
+	}
+
 	const dossiers: string[] = [];
 	for (const character of orderedMembers) {
 		const dossier = buildCharacterDossier(context, character, settings);
@@ -1098,38 +1099,99 @@ async function buildNarratorPrompt(context: NarratorRuntimeContext): Promise<str
 		}
 	}
 
-	const promptLines = [
-		`[${settings.promptTitle || DEFAULT_PROMPT_HEADER}]`,
-		`This is private context for the narrator character ${currentCharacter.name}.`,
-		currentGroup ? `Current group: ${currentGroup.name}` : 'No group is selected. Only the narrator character dossier is available.',
-		'Use the dossiers below to make the narrator all-knowing about the current group without exposing this briefing verbatim.',
-		'',
-		'Roster:',
-		...rosters,
-		'',
-		'Briefing:',
-		narratorState.instructions.trim() || DEFAULT_NARRATOR_INSTRUCTIONS,
-		...dossiers.length ? ['', ...dossiers] : [],
-	];
-
-	return promptLines.filter((line, index, lines) => !(line === '' && lines[index - 1] === '')).join('\n');
+	return dossiers.join('\n\n');
 }
 
-async function syncNarratorPrompt(): Promise<string> {
-	const context = getRuntimeContext();
+async function buildNarratorMeta(context: NarratorRuntimeContext): Promise<string> {
 	const settings = getExtensionSettings(context);
-	const prompt = await buildNarratorPrompt(context);
-	const setExtensionPrompt = context.setExtensionPrompt;
+	const currentCharacter = getCurrentCharacter(context);
+	if (!currentCharacter) {
+		return '';
+	}
 
-	if (typeof setExtensionPrompt === 'function') {
-		if (prompt) {
-			setExtensionPrompt(MODULE_NAME, prompt, settings.promptPosition, settings.promptDepth, false, 0);
-		} else {
-			setExtensionPrompt(MODULE_NAME, '', settings.promptPosition, settings.promptDepth, false, 0);
+	const narratorState = getNarratorState(currentCharacter);
+	if (!narratorState?.enabled) {
+		return '';
+	}
+
+	if (!settings.includeLinkedWorldInfo) {
+		return '';
+	}
+
+	const currentGroup = getCurrentGroup(context);
+	const characters = getCharacters(context);
+	const groupMembers = currentGroup?.members ?? [];
+
+	const lorebookLines: string[] = [];
+	for (const avatar of groupMembers) {
+		const character = characters.find((c) => c.avatar === avatar);
+		if (!character) continue;
+
+		const lorebooks: string[] = [];
+		if (character.data?.extensions?.world) {
+			lorebooks.push(character.data.extensions.world);
+		}
+
+		const extensionSettings = (globalThis as unknown as { extension_settings?: Record<string, unknown> }).extension_settings as Record<string, unknown> | undefined;
+		const worldInfoSettings = extensionSettings?.world_info as { charLore?: CharLoreSetting[] } | undefined;
+		const charLore = worldInfoSettings?.charLore;
+		if (charLore) {
+			const charExtra = charLore.find((e) => e.name === avatar);
+			if (charExtra?.extraBooks && Array.isArray(charExtra.extraBooks)) {
+				for (const book of charExtra.extraBooks) {
+					if (book && !lorebooks.includes(book)) {
+						lorebooks.push(book);
+					}
+				}
+			}
+		}
+
+		if (lorebooks.length > 0) {
+			lorebookLines.push(`Linked lorebooks from ${character.name}: ${lorebooks.join(', ')}`);
 		}
 	}
 
-	return prompt;
+	return lorebookLines.join('\n');
+}
+
+async function buildNarratorPrompt(context: NarratorRuntimeContext): Promise<string> {
+	const parts = await Promise.all([
+		buildNarratorBriefing(context),
+		buildNarratorRoster(context),
+		buildNarratorDossiers(context),
+		buildNarratorMeta(context),
+	]);
+
+	return parts.filter(Boolean).join('\n\n');
+}
+
+async function syncNarratorPrompt(): Promise<void> {
+	const context = getRuntimeContext();
+	const settings = getExtensionSettings(context);
+	const setExtensionPrompt = context.setExtensionPrompt;
+
+	if (typeof setExtensionPrompt !== 'function') {
+		return;
+	}
+
+	const [briefing, roster, dossiers, meta] = await Promise.all([
+		buildNarratorBriefing(context),
+		buildNarratorRoster(context),
+		buildNarratorDossiers(context),
+		buildNarratorMeta(context),
+	]);
+
+	setExtensionPrompt(MODULE_BRIEFING, briefing, settings.promptPosition, settings.promptDepth, false, 0);
+	setExtensionPrompt(MODULE_DOSSIERS, dossiers, settings.promptPosition, settings.promptDepth, false, 0);
+	setExtensionPrompt(MODULE_META, meta, settings.promptPosition, settings.promptDepth, false, 0);
+
+	const hasContent = briefing || roster || dossiers || meta;
+	if (hasContent) {
+		const combined = [briefing, roster, dossiers, meta].filter(Boolean).join('\n\n');
+		setExtensionPrompt(MODULE_NAME, combined, settings.promptPosition, settings.promptDepth, false, 0);
+	} else {
+		setExtensionPrompt(MODULE_NAME, '', settings.promptPosition, settings.promptDepth, false, 0);
+	}
 }
 
 async function writeNarratorState(characterId: number, enabled: boolean, instructions: string): Promise<void> {
@@ -1196,7 +1258,8 @@ async function registerSlashCommand(): Promise<void> {
 			const targetCharacterId = targetCharacter?.id;
 
 			if (action === 'preview') {
-				return await syncNarratorPrompt();
+				const context = getRuntimeContext();
+				return await buildNarratorPrompt(context);
 			}
 
 			if (action === 'status') {
@@ -1528,8 +1591,8 @@ async function bootstrap(): Promise<void> {
 	}
 
 	try {
-		const prompt = await syncNarratorPrompt();
-		logInfo(prompt ? 'initial narrator prompt synced.' : 'no narrator prompt was injected because no active narrator is marked.');
+		await syncNarratorPrompt();
+		logInfo('Initial narrator prompts synced.');
 	} catch (error) {
 		logError('failed to sync narrator prompt during bootstrap.', error);
 	}
@@ -1540,7 +1603,7 @@ async function bootstrap(): Promise<void> {
 			logInfo('APP_READY received; injecting narrator button and settings.');
 			injectNarratorButtonIntoCharacterPanel();
 			injectGlobalSettings();
-			void syncNarratorPrompt().catch((error) => logError('failed to sync narrator prompt after APP_READY.', error));
+			void syncNarratorPrompt().catch((error) => logError('failed to sync narrator prompts after APP_READY.', error));
 		});
 	} else {
 		logWarn('APP_READY hook was not registered because event source or event type map is unavailable.');
