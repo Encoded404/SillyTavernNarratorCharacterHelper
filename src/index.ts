@@ -70,6 +70,7 @@ type NarratorRuntimeContext = {
 	loadWorldInfo?: (name: string) => Promise<WorldInfoFile | null | undefined>;
 	eventSource?: {
 		on: (eventName: string, handler: (...args: unknown[]) => void) => void;
+		emit: (eventName: string, ...args: unknown[]) => Promise<void>;
 	};
 	eventTypes?: Record<string, string>;
 	event_types?: Record<string, string>;
@@ -162,6 +163,16 @@ type WorldInfoBook = {
 type WorldInfoFile = {
 	entries?: Record<string, WorldInfoBookEntry>;
 	name?: string;
+};
+
+type WorldInfoForceActivateEntry = {
+	world: string;
+	uid: string | number;
+};
+
+type CharLoreSetting = {
+	name: string;
+	extraBooks?: string[];
 };
 
 const MODULE_NAME = 'narrator_character_helper';
@@ -457,20 +468,10 @@ function buildNarratorModalHtml(
 				<h3><i class="fa-solid fa-feather-pointed"></i> Narrator Settings for ${character.name}</h3>
 			</div>
 
-			<div class="narrator-helper-modal__section">
-				<div class="inline-drawer">
-					<div class="inline-drawer-toggle inline-drawer-header">
-						<b>Narrator Status</b>
-						<div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-					</div>
-					<div class="inline-drawer-content">
-						<label class="checkbox_label">
-							<input id="narrator-enabled" type="checkbox" ${isEnabled ? 'checked' : ''} />
-							<span>Enable narrator mode for ${character.name}</span>
-						</label>
-					</div>
-				</div>
-			</div>
+            <label class="checkbox_label">
+                <input id="narrator-enabled" type="checkbox" ${isEnabled ? 'checked' : ''} />
+                <span>Enable narrator mode for ${character.name}</span>
+            </label>
 
 			<div class="narrator-helper-modal__section">
 				<div class="inline-drawer">
@@ -667,6 +668,88 @@ function getGroups(context: NarratorRuntimeContext): GroupRecord[] {
 	return Array.isArray(context.groups) ? context.groups : [];
 }
 
+function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext): Set<string> {
+	const lorebooks = new Set<string>();
+	const group = getCurrentGroup(context);
+	const characters = getCharacters(context);
+
+	if (!group) {
+		return lorebooks;
+	}
+
+	const memberAvatars = group.members.filter((avatar) => !group.disabled_members.includes(avatar) || avatar === getCurrentCharacter(context)?.avatar);
+
+	for (const avatar of memberAvatars) {
+		const character = characters.find((c) => c.avatar === avatar);
+		if (!character) continue;
+
+		if (character.data?.extensions?.world) {
+			lorebooks.add(character.data.extensions.world);
+		}
+
+		const extensionSettings = (globalThis as unknown as { extension_settings?: Record<string, unknown> }).extension_settings as Record<string, unknown> | undefined;
+		const worldInfoSettings = extensionSettings?.world_info as { charLore?: CharLoreSetting[] } | undefined;
+		const charLore = worldInfoSettings?.charLore;
+		if (charLore) {
+			const charExtra = charLore.find((e) => e.name === avatar);
+			if (charExtra?.extraBooks && Array.isArray(charExtra.extraBooks)) {
+				for (const book of charExtra.extraBooks) {
+					if (book) lorebooks.add(book);
+				}
+			}
+		}
+	}
+
+	return lorebooks;
+}
+
+async function forceActivateGroupLorebooks(context: NarratorRuntimeContext): Promise<void> {
+	const lorebookNames = getAllGroupMemberLorebookNames(context);
+	if (lorebookNames.size === 0) {
+		return;
+	}
+
+	const alreadyActive = new Set<string>();
+	const globalSettings = (globalThis as unknown as { extension_settings?: Record<string, unknown> }).extension_settings as Record<string, unknown> | undefined;
+	const worldInfo = globalSettings?.world_info as { globalSelect?: string[] } | undefined;
+	if (worldInfo?.globalSelect) {
+		for (const name of worldInfo.globalSelect) {
+			alreadyActive.add(name);
+		}
+	}
+
+	const entriesToActivate: WorldInfoForceActivateEntry[] = [];
+
+	for (const bookName of lorebookNames) {
+		if (alreadyActive.has(bookName)) {
+			continue;
+		}
+
+		const loader = context.loadWorldInfo;
+		if (typeof loader !== 'function') continue;
+
+		try {
+			const data = await loader(bookName);
+			if (!data?.entries) continue;
+
+			for (const [uid, entry] of Object.entries(data.entries)) {
+				if (entry && typeof entry === 'object' && 'uid' in entry) {
+					entriesToActivate.push({ world: bookName, uid: (entry as WorldInfoBookEntry).uid ?? uid });
+				} else {
+					entriesToActivate.push({ world: bookName, uid });
+				}
+			}
+		} catch (error) {
+			logWarn(`Failed to load lorebook "${bookName}"`, error);
+		}
+	}
+
+	if (entriesToActivate.length > 0 && context.eventSource?.emit) {
+		logInfo(`Force-activating ${entriesToActivate.length} World Info entries from ${lorebookNames.size} lorebooks.`);
+		await context.eventSource.emit('WORLDINFO_FORCE_ACTIVATE', entriesToActivate);
+	}
+}
+
 function getCurrentCharacterId(context: NarratorRuntimeContext): number | undefined {
 	if (typeof context.characterId === 'number') {
 		return context.characterId;
@@ -808,24 +891,6 @@ function getBookEntries(book: WorldInfoBook | undefined): WorldInfoBookEntry[] {
 	return Object.values(book.entries).filter((entry): entry is WorldInfoBookEntry => Boolean(entry));
 }
 
-async function summarizeWorldInfoFile(context: NarratorRuntimeContext, worldInfoName: string, characterName: string, settings: NarratorSettings): Promise<string> {
-	const loader = context.loadWorldInfo;
-	if (!worldInfoName || typeof loader !== 'function') {
-		return '';
-	}
-
-	const data = await loader(worldInfoName);
-	const entries = Object.values(data?.entries ?? {}).filter((entry): entry is WorldInfoBookEntry => Boolean(entry));
-	if (!entries.length) {
-		return '';
-	}
-
-	return [
-		`World Info: ${worldInfoName} (${entries.length} entr${entries.length === 1 ? 'y' : 'ies'})`,
-		summarizeEntries(entries, settings.maxWorldEntries, settings.maxWorldEntryLength, characterName, context),
-	].filter(Boolean).join('\n');
-}
-
 function buildCharacterDossier(context: NarratorRuntimeContext, character: CharacterRecord, settings: NarratorSettings): string {
 	const characterName = normalizeText(character.name) || normalizeText(character.avatar) || 'Unknown';
 	const characterData = character.data ?? {};
@@ -885,7 +950,7 @@ function buildCharacterDossier(context: NarratorRuntimeContext, character: Chara
 	if (settings.includeLinkedWorldInfo) {
 		const linkedWorldInfo = normalizeText(characterData.extensions?.world);
 		if (linkedWorldInfo) {
-			sections.push(`Linked lorebook: ${linkedWorldInfo}`);
+			sections.push(`Linked lorebook "${linkedWorldInfo}" is active via native World Info system.`);
 		}
 	}
 
@@ -957,14 +1022,6 @@ async function buildNarratorPrompt(context: NarratorRuntimeContext): Promise<str
 		const dossier = buildCharacterDossier(context, character, settings);
 		if (dossier) {
 			dossiers.push(dossier);
-		}
-
-		const linkedWorldInfo = normalizeText(character.data?.extensions?.world);
-		if (settings.includeLinkedWorldInfo && linkedWorldInfo) {
-			const worldInfoSummary = await summarizeWorldInfoFile(context, linkedWorldInfo, character.name, settings);
-			if (worldInfoSummary) {
-				dossiers.push(worldInfoSummary);
-			}
 		}
 	}
 
@@ -1205,7 +1262,6 @@ function registerEventHandlers(): void {
 		eventTypes.CHARACTER_PAGE_LOADED,
 		eventTypes.GROUP_CHAT_CREATED,
 		eventTypes.GROUP_CHAT_DELETED,
-		eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS,
 		eventTypes.GENERATION_AFTER_COMMANDS,
 		eventTypes.GROUP_WRAPPER_STARTED,
 		eventTypes.GROUP_WRAPPER_FINISHED,
@@ -1217,6 +1273,11 @@ function registerEventHandlers(): void {
 			scheduleRefresh();
 		});
 	}
+
+	eventSource.on(eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
+		const ctx = getRuntimeContext();
+		void forceActivateGroupLorebooks(ctx);
+	});
 
 	eventSource.on(eventTypes.CHARACTER_EDITED, () => {
 		logInfo('CHARACTER_EDITED event received, attempting to inject narrator button.');
