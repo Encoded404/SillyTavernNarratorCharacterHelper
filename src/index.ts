@@ -277,20 +277,14 @@ function getExtensionSettings(context: NarratorRuntimeContext): NarratorSettings
 }
 
 function injectNarratorButtonIntoCharacterPanel(): void {
-	const characterPanel = document.querySelector('#character_edit_panel');
-	if (!characterPanel) {
-		return;
-	}
-
-	if (characterPanel.querySelector('#narrator-helper-char-panel-btn')) {
-		return;
-	}
-
-	const buttonRow = characterPanel.querySelector('.character_popup_buttons_flex')
-		?? characterPanel.querySelector('.character_name_block')?.parentElement
-		?? characterPanel.querySelector('.character_popup_buttons');
+	const buttonRow = document.querySelector('.form_create_bottom_buttons_block.buttons_block');
 
 	if (!buttonRow) {
+		logInfo('Narrator button: character edit panel button row not found. The panel may not be open yet.');
+		return;
+	}
+
+	if (buttonRow.querySelector('#narrator-helper-char-panel-btn')) {
 		return;
 	}
 
@@ -304,10 +298,18 @@ function injectNarratorButtonIntoCharacterPanel(): void {
 		const charId = getCurrentCharacterId(context);
 		if (charId !== undefined) {
 			openNarratorModal(charId);
+		} else {
+			toastrWarning('No character is currently selected. Open a character card first.');
 		}
 	});
 
 	buttonRow.appendChild(btn);
+	logInfo('Narrator button injected into character edit panel.');
+}
+
+function toastrWarning(message: string): void {
+	const t = (globalThis as unknown as { toastr?: { warning: (msg: string, title?: string) => void } }).toastr;
+	t?.warning?.(message, 'Narrator Helper');
 }
 
 function openNarratorModal(characterId: number): void {
@@ -1126,15 +1128,24 @@ function registerEventHandlers(): void {
 	}
 
 	eventSource.on(eventTypes.CHARACTER_EDITED, () => {
+		logInfo('CHARACTER_EDITED event received, attempting to inject narrator button.');
 		setTimeout(() => {
 			injectNarratorButtonIntoCharacterPanel();
 		}, 200);
+	});
+
+	eventSource.on(eventTypes.CHARACTER_PAGE_LOADED, () => {
+		logInfo('CHARACTER_PAGE_LOADED event received, attempting to inject narrator button.');
+		setTimeout(() => {
+			injectNarratorButtonIntoCharacterPanel();
+		}, 300);
 	});
 }
 
 function injectGlobalSettings(): void {
 	const settingsContainer = document.getElementById('extensions_settings2') ?? document.getElementById('extensions_settings');
 	if (!settingsContainer) {
+		logWarn('Global settings: neither #extensions_settings2 nor #extensions_settings found.');
 		return;
 	}
 
@@ -1212,6 +1223,7 @@ function injectGlobalSettings(): void {
 	settingsContainer.appendChild(document.createRange().createContextualFragment(settingsHtml));
 
 	attachGlobalSettingsEvents();
+	logInfo('Global narrator settings injected into extensions panel.');
 }
 
 function attachGlobalSettingsEvents(): void {
@@ -1300,7 +1312,7 @@ async function bootstrap(): Promise<void> {
 	const appReadyEvent = context.eventTypes?.APP_READY ?? context.event_types?.APP_READY;
 	if (appReadyEvent && context.eventSource) {
 		context.eventSource.on(appReadyEvent, () => {
-			logInfo('APP_READY received; refreshing narrator helper state.');
+			logInfo('APP_READY received; injecting narrator button and settings.');
 			injectNarratorButtonIntoCharacterPanel();
 			injectGlobalSettings();
 			void syncNarratorPrompt().catch((error) => logError('failed to sync narrator prompt after APP_READY.', error));
@@ -1309,7 +1321,9 @@ async function bootstrap(): Promise<void> {
 		logWarn('APP_READY hook was not registered because event source or event type map is unavailable.');
 	}
 
+	logInfo('Scheduling initial narrator button injection attempt in 1 second.');
 	setTimeout(() => {
+		logInfo('Attempting initial narrator button injection.');
 		injectNarratorButtonIntoCharacterPanel();
 	}, 1000);
 }
