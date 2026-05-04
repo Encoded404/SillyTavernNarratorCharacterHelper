@@ -352,10 +352,36 @@ function getEditedCharacterIdFromPanel(): number | undefined {
 		?? (document.getElementById('rm_character_name') as HTMLInputElement | null);
 	if (nameInput?.value) {
 		const charName = nameInput.value.trim();
-		const index = characters.findIndex((c) => c.name === charName);
-		if (index !== -1) {
-			logInfo(`Found edited character by name input: "${charName}" at index ${index}`);
-			return index;
+		const matchingIndices = characters
+			.map((c, i) => ({ character: c, index: i }))
+			.filter(({ character }) => character.name === charName)
+			.map(({ index }) => index);
+
+		if (matchingIndices.length === 1) {
+			logInfo(`Found edited character by name input: "${charName}" at index ${matchingIndices[0]}`);
+			return matchingIndices[0];
+		}
+
+		if (matchingIndices.length > 1) {
+			const tagsTextarea = document.getElementById('tags_textarea') as HTMLTextAreaElement | null;
+			if (tagsTextarea?.value) {
+				const panelTags = tagsTextarea.value
+					.split(',')
+					.map((t) => t.trim().toLowerCase())
+					.filter(Boolean);
+
+				for (const idx of matchingIndices) {
+					const charTags = Array.isArray(characters[idx].tags) ? characters[idx].tags : [];
+					const charTagsLower = charTags.map((t) => t.toLowerCase());
+					const commonTags = panelTags.filter((t) => charTagsLower.includes(t));
+					if (commonTags.length === panelTags.length && panelTags.length > 0) {
+						logInfo(`Found edited character by name+tags: "${charName}" with tags [${panelTags.join(', ')}] at index ${idx}`);
+						return idx;
+					}
+				}
+			}
+
+			logInfo(`Name "${charName}" matches ${matchingIndices.length} characters, could not disambiguate by tags.`);
 		}
 	}
 
