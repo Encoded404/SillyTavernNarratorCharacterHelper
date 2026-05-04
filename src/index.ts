@@ -295,10 +295,17 @@ function injectNarratorButtonIntoCharacterPanel(): void {
 	btn.innerHTML = '<i class="fa-fw fa-solid fa-feather-pointed"></i><span>Narrator</span>';
 	btn.addEventListener('click', () => {
 		const context = getRuntimeContext();
-		const charId = getCurrentCharacterId(context);
+		let charId = getCurrentCharacterId(context);
+
+		if (charId === undefined) {
+			charId = getEditedCharacterIdFromPanel();
+		}
+
 		if (charId !== undefined) {
+			logInfo(`Opening narrator modal for character index ${charId}.`);
 			openNarratorModal(charId);
 		} else {
+			logWarn('Could not determine which character is being edited. characterId and this_chid are undefined, and no #create_button_id element found.');
 			toastrWarning('No character is currently selected. Open a character card first.');
 		}
 	});
@@ -310,6 +317,46 @@ function injectNarratorButtonIntoCharacterPanel(): void {
 function toastrWarning(message: string): void {
 	const t = (globalThis as unknown as { toastr?: { warning: (msg: string, title?: string) => void } }).toastr;
 	t?.warning?.(message, 'Narrator Helper');
+}
+
+function getEditedCharacterIdFromPanel(): number | undefined {
+	const context = getRuntimeContext();
+	const characters = getCharacters(context);
+
+	const createButtonId = (document.getElementById('create_button_id') as HTMLInputElement | null)?.value;
+	if (createButtonId) {
+		const index = characters.findIndex((c) => c.avatar === createButtonId);
+		if (index !== -1) {
+			logInfo(`Found edited character by #create_button_id: "${createButtonId}" at index ${index}`);
+			return index;
+		}
+	}
+
+	const avatarImg = document.querySelector<HTMLImageElement>('#avatar_div img');
+	if (avatarImg?.src) {
+		const avatarName = avatarImg.src.split('/').pop();
+		if (avatarName) {
+			const index = characters.findIndex((c) => c.avatar === avatarName || c.avatar === decodeURIComponent(avatarName));
+			if (index !== -1) {
+				logInfo(`Found edited character by #avatar_div img: "${avatarName}" at index ${index}`);
+				return index;
+			}
+		}
+	}
+
+	const nameInput = (document.getElementById('character_name_pole') as HTMLInputElement | null)
+		?? (document.getElementById('rm_character_name') as HTMLInputElement | null);
+	if (nameInput?.value) {
+		const charName = nameInput.value.trim();
+		const index = characters.findIndex((c) => c.name === charName);
+		if (index !== -1) {
+			logInfo(`Found edited character by name input: "${charName}" at index ${index}`);
+			return index;
+		}
+	}
+
+	logWarn('Could not find edited character ID from panel DOM elements.');
+	return undefined;
 }
 
 function openNarratorModal(characterId: number): void {
