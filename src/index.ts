@@ -1441,6 +1441,18 @@ function registerEventHandlers(): void {
 		});
 	}
 
+	eventSource.on(eventTypes.GENERATION_STARTED, () => {
+		logInfo('GENERATION_STARTED fired.');
+	});
+
+	eventSource.on(eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, () => {
+		logInfo('GENERATE_AFTER_COMBINE_PROMPTS fired.');
+	});
+
+	eventSource.on(eventTypes.GENERATE_AFTER_DATA, () => {
+		logInfo('GENERATE_AFTER_DATA fired.');
+	});
+
 	const generateEvent = eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS;
 	logInfo(`registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS event type = "${generateEvent ?? '(undefined)'}"`);
 
