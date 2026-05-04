@@ -47,6 +47,29 @@ type NarratorSettings = {
 	maxWorldEntryLength: number;
 } & TemplateSettings;
 
+type CapturedModalValues = {
+	enabled: boolean;
+	instructions: string;
+	promptPosition: number;
+	promptDepth: number;
+	includeDisabledMembers: boolean;
+	includeCharacterBook: boolean;
+	includeLinkedWorldInfo: boolean;
+	includeDescription: boolean;
+	includePersonality: boolean;
+	includeScenario: boolean;
+	includeFirstMessage: boolean;
+	includeExampleMessages: boolean;
+	includeCreatorNotes: boolean;
+	includeSystemPrompt: boolean;
+	includePostHistoryInstructions: boolean;
+	includeTags: boolean;
+	maxBookEntries: number;
+	maxBookEntryLength: number;
+	maxWorldEntries: number;
+	maxWorldEntryLength: number;
+};
+
 type NarratorRuntimeContext = {
 	characters?: Array<CharacterRecord>;
 	groups?: Array<GroupRecord>;
@@ -227,6 +250,8 @@ const DEFAULT_NARRATOR_INSTRUCTIONS = [
 let bootstrapped = false;
 let refreshTimer = 0;
 let narratorModalOpen = false;
+let narratorModalRoot: HTMLElement | null = null;
+let capturedModalValues: CapturedModalValues | null = null;
 
 function logInfo(message: string, data?: unknown): void {
 	if (data === undefined) {
@@ -253,6 +278,19 @@ function logError(message: string, error?: unknown): void {
 	}
 
 	console.error(`[Narrator Helper] ${message}`, error);
+}
+
+function findModalElement<T extends HTMLElement>(id: string, fallbackSelector?: string): T | null {
+	if (narratorModalRoot) {
+		const found = narratorModalRoot.querySelector<T>(`#${id}`);
+		if (found) return found;
+	}
+
+	if (fallbackSelector) {
+		return document.querySelector<T>(fallbackSelector);
+	}
+
+	return document.getElementById(id) as T | null;
 }
 
 function getRuntimeContext(): NarratorRuntimeContext {
@@ -441,17 +479,22 @@ function openNarratorModal(characterId: number): void {
 		},
 	);
 
+	setTimeout(() => {
+		narratorModalRoot = document.querySelector('.narrator-helper-modal') as HTMLElement | null;
+		attachModalEvents(characterId);
+	}, 100);
+
 	void popup.show().then((result: unknown) => {
 		narratorModalOpen = false;
 
 		if (result === POPUP_RESULT.AFFIRMATIVE) {
+			capturedModalValues = captureModalValues();
 			void saveModalSettings(characterId);
 		}
-	});
 
-	setTimeout(() => {
-		attachModalEvents(characterId);
-	}, 100);
+		narratorModalRoot = null;
+		capturedModalValues = null;
+	});
 }
 
 function buildNarratorModalHtml(
@@ -572,13 +615,62 @@ function escapeHtml(text: string): string {
 		.replace(/'/g, '&#039;');
 }
 
-function attachModalEvents(characterId: number): void {
-	const context = getRuntimeContext();
+function captureModalValues(): CapturedModalValues | null {
+	const enabledCheckbox = findModalElement<HTMLInputElement>('narrator-enabled', '.narrator-helper-modal #narrator-enabled');
+	const instructionsTextarea = findModalElement<HTMLTextAreaElement>('narrator-instructions', '.narrator-helper-modal #narrator-instructions');
+	const positionSelect = findModalElement<HTMLSelectElement>('prompt-position', '.narrator-helper-modal #prompt-position');
+	const depthInput = findModalElement<HTMLInputElement>('prompt-depth', '.narrator-helper-modal #prompt-depth');
+	const includeDisabled = findModalElement<HTMLInputElement>('include-disabled', '.narrator-helper-modal #include-disabled');
+	const includeCharacterBook = findModalElement<HTMLInputElement>('include-books', '.narrator-helper-modal #include-books');
+	const includeWorldInfo = findModalElement<HTMLInputElement>('include-world-info', '.narrator-helper-modal #include-world-info');
+	const includeDescription = findModalElement<HTMLInputElement>('include-description', '.narrator-helper-modal #include-description');
+	const includePersonality = findModalElement<HTMLInputElement>('include-personality', '.narrator-helper-modal #include-personality');
+	const includeScenario = findModalElement<HTMLInputElement>('include-scenario', '.narrator-helper-modal #include-scenario');
+	const includeFirstMessage = findModalElement<HTMLInputElement>('include-first-message', '.narrator-helper-modal #include-first-message');
+	const includeExampleMessages = findModalElement<HTMLInputElement>('include-example-messages', '.narrator-helper-modal #include-example-messages');
+	const includeCreatorNotes = findModalElement<HTMLInputElement>('include-creator-notes', '.narrator-helper-modal #include-creator-notes');
+	const includeSystemPrompt = findModalElement<HTMLInputElement>('include-system-prompt', '.narrator-helper-modal #include-system-prompt');
+	const includePostHistory = findModalElement<HTMLInputElement>('include-post-history', '.narrator-helper-modal #include-post-history');
+	const includeTags = findModalElement<HTMLInputElement>('include-tags', '.narrator-helper-modal #include-tags');
+	const maxBookEntries = findModalElement<HTMLInputElement>('max-book-entries', '.narrator-helper-modal #max-book-entries');
+	const maxBookEntryLength = findModalElement<HTMLInputElement>('max-book-entry-length', '.narrator-helper-modal #max-book-entry-length');
+	const maxWorldEntries = findModalElement<HTMLInputElement>('max-world-entries', '.narrator-helper-modal #max-world-entries');
+	const maxWorldEntryLength = findModalElement<HTMLInputElement>('max-world-entry-length', '.narrator-helper-modal #max-world-entry-length');
 
-	const previewBtn = document.getElementById('narrator-preview-btn');
+	if (!enabledCheckbox && !instructionsTextarea) {
+		logWarn('captureModalValues: no modal elements found.');
+		return null;
+	}
+
+	return {
+		enabled: enabledCheckbox?.checked ?? false,
+		instructions: instructionsTextarea?.value ?? '',
+		promptPosition: Number(positionSelect?.value) || DEFAULT_SETTINGS.promptPosition,
+		promptDepth: Math.max(0, Number(depthInput?.value) || DEFAULT_SETTINGS.promptDepth),
+		includeDisabledMembers: includeDisabled?.checked ?? false,
+		includeCharacterBook: includeCharacterBook?.checked ?? false,
+		includeLinkedWorldInfo: includeWorldInfo?.checked ?? false,
+		includeDescription: includeDescription?.checked ?? false,
+		includePersonality: includePersonality?.checked ?? false,
+		includeScenario: includeScenario?.checked ?? false,
+		includeFirstMessage: includeFirstMessage?.checked ?? DEFAULT_SETTINGS.includeFirstMessage,
+		includeExampleMessages: includeExampleMessages?.checked ?? DEFAULT_SETTINGS.includeExampleMessages,
+		includeCreatorNotes: includeCreatorNotes?.checked ?? DEFAULT_SETTINGS.includeCreatorNotes,
+		includeSystemPrompt: includeSystemPrompt?.checked ?? DEFAULT_SETTINGS.includeSystemPrompt,
+		includePostHistoryInstructions: includePostHistory?.checked ?? false,
+		includeTags: includeTags?.checked ?? false,
+		maxBookEntries: Number(maxBookEntries?.value) || DEFAULT_SETTINGS.maxBookEntries,
+		maxBookEntryLength: Number(maxBookEntryLength?.value) || DEFAULT_SETTINGS.maxBookEntryLength,
+		maxWorldEntries: Number(maxWorldEntries?.value) || DEFAULT_SETTINGS.maxWorldEntries,
+		maxWorldEntryLength: Number(maxWorldEntryLength?.value) || DEFAULT_SETTINGS.maxWorldEntryLength,
+	};
+}
+
+function attachModalEvents(characterId: number): void {
+	const previewBtn = findModalElement('narrator-preview-btn', '.narrator-helper-modal #narrator-preview-btn');
 	previewBtn?.addEventListener('click', async () => {
-		const previewArea = document.getElementById('narrator-preview-area');
-		const previewText = document.getElementById('narrator-preview-text') as HTMLTextAreaElement | null;
+		const previewArea = findModalElement('narrator-preview-area', '.narrator-helper-modal #narrator-preview-area');
+		const previewText = findModalElement<HTMLTextAreaElement>('narrator-preview-text', '.narrator-helper-modal #narrator-preview-text');
 		if (!previewArea || !previewText) {
 			return;
 		}
@@ -586,15 +678,15 @@ function attachModalEvents(characterId: number): void {
 		previewArea.style.display = 'block';
 		previewText.value = 'Building preview...';
 		try {
-			previewText.value = await buildNarratorPrompt(context);
+			previewText.value = await buildNarratorPrompt(getRuntimeContext());
 		} catch (error) {
 			console.error('Narrator prompt preview failed', error);
 			previewText.value = `Preview failed: ${String(error)}`;
 		}
 	});
 
-	const positionSelect = document.getElementById('prompt-position') as HTMLSelectElement | null;
-	const depthInput = document.getElementById('prompt-depth') as HTMLInputElement | null;
+	const positionSelect = findModalElement<HTMLSelectElement>('prompt-position', '.narrator-helper-modal #prompt-position');
+	const depthInput = findModalElement<HTMLInputElement>('prompt-depth', '.narrator-helper-modal #prompt-depth');
 	positionSelect?.addEventListener('change', () => {
 		if (depthInput) {
 			depthInput.disabled = positionSelect.value !== '1';
@@ -610,52 +702,33 @@ async function saveModalSettings(characterId: number): Promise<void> {
 		return;
 	}
 
-	const enabledCheckbox = document.getElementById('narrator-enabled') as HTMLInputElement | null;
-	const instructionsTextarea = document.getElementById('narrator-instructions') as HTMLTextAreaElement | null;
+	const values = capturedModalValues ?? captureModalValues();
+	if (!values) {
+		logWarn('saveModalSettings: no values captured.');
+		return;
+	}
 
-	const enabled = enabledCheckbox?.checked ?? false;
-	const instructions = instructionsTextarea?.value ?? '';
-
-	await writeNarratorState(characterId, enabled, instructions);
-
-	const positionSelect = document.getElementById('prompt-position') as HTMLSelectElement | null;
-	const depthInput = document.getElementById('prompt-depth') as HTMLInputElement | null;
-	const includeDisabled = document.getElementById('include-disabled') as HTMLInputElement | null;
-	const includeCharacterBook = document.getElementById('include-books') as HTMLInputElement | null;
-	const includeWorldInfo = document.getElementById('include-world-info') as HTMLInputElement | null;
-	const includeDescription = document.getElementById('include-description') as HTMLInputElement | null;
-	const includePersonality = document.getElementById('include-personality') as HTMLInputElement | null;
-	const includeScenario = document.getElementById('include-scenario') as HTMLInputElement | null;
-	const includeFirstMessage = document.getElementById('include-first-message') as HTMLInputElement | null;
-	const includeExampleMessages = document.getElementById('include-example-messages') as HTMLInputElement | null;
-	const includeCreatorNotes = document.getElementById('include-creator-notes') as HTMLInputElement | null;
-	const includeSystemPrompt = document.getElementById('include-system-prompt') as HTMLInputElement | null;
-	const includePostHistory = document.getElementById('include-post-history') as HTMLInputElement | null;
-	const includeTags = document.getElementById('include-tags') as HTMLInputElement | null;
-	const maxBookEntries = document.getElementById('max-book-entries') as HTMLInputElement | null;
-	const maxBookEntryLength = document.getElementById('max-book-entry-length') as HTMLInputElement | null;
-	const maxWorldEntries = document.getElementById('max-world-entries') as HTMLInputElement | null;
-	const maxWorldEntryLength = document.getElementById('max-world-entry-length') as HTMLInputElement | null;
+	await writeNarratorState(characterId, values.enabled, values.instructions);
 
 	const settings = getExtensionSettings(context);
-	settings.promptPosition = Number(positionSelect?.value) || DEFAULT_SETTINGS.promptPosition;
-	settings.promptDepth = Math.max(0, Number(depthInput?.value) || DEFAULT_SETTINGS.promptDepth);
-	settings.includeDisabledMembers = includeDisabled?.checked || false;
-	settings.includeCharacterBook = includeCharacterBook?.checked || false;
-	settings.includeLinkedWorldInfo = includeWorldInfo?.checked || false;
-	settings.includeDescription = includeDescription?.checked || false;
-	settings.includePersonality = includePersonality?.checked || false;
-	settings.includeScenario = includeScenario?.checked || false;
-	settings.includeFirstMessage = includeFirstMessage?.checked ?? DEFAULT_SETTINGS.includeFirstMessage;
-	settings.includeExampleMessages = includeExampleMessages?.checked ?? DEFAULT_SETTINGS.includeExampleMessages;
-	settings.includeCreatorNotes = includeCreatorNotes?.checked ?? DEFAULT_SETTINGS.includeCreatorNotes;
-	settings.includeSystemPrompt = includeSystemPrompt?.checked ?? DEFAULT_SETTINGS.includeSystemPrompt;
-	settings.includePostHistoryInstructions = includePostHistory?.checked ?? false;
-	settings.includeTags = includeTags?.checked ?? false;
-	settings.maxBookEntries = Number(maxBookEntries?.value) || DEFAULT_SETTINGS.maxBookEntries;
-	settings.maxBookEntryLength = Number(maxBookEntryLength?.value) || DEFAULT_SETTINGS.maxBookEntryLength;
-	settings.maxWorldEntries = Number(maxWorldEntries?.value) || DEFAULT_SETTINGS.maxWorldEntries;
-	settings.maxWorldEntryLength = Number(maxWorldEntryLength?.value) || DEFAULT_SETTINGS.maxWorldEntryLength;
+	settings.promptPosition = values.promptPosition;
+	settings.promptDepth = values.promptDepth;
+	settings.includeDisabledMembers = values.includeDisabledMembers;
+	settings.includeCharacterBook = values.includeCharacterBook;
+	settings.includeLinkedWorldInfo = values.includeLinkedWorldInfo;
+	settings.includeDescription = values.includeDescription;
+	settings.includePersonality = values.includePersonality;
+	settings.includeScenario = values.includeScenario;
+	settings.includeFirstMessage = values.includeFirstMessage;
+	settings.includeExampleMessages = values.includeExampleMessages;
+	settings.includeCreatorNotes = values.includeCreatorNotes;
+	settings.includeSystemPrompt = values.includeSystemPrompt;
+	settings.includePostHistoryInstructions = values.includePostHistoryInstructions;
+	settings.includeTags = values.includeTags;
+	settings.maxBookEntries = values.maxBookEntries;
+	settings.maxBookEntryLength = values.maxBookEntryLength;
+	settings.maxWorldEntries = values.maxWorldEntries;
+	settings.maxWorldEntryLength = values.maxWorldEntryLength;
 
 	context.saveSettingsDebounced?.();
 }
