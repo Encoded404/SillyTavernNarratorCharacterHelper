@@ -183,6 +183,7 @@ let bootstrapped = false;
 let refreshTimer = 0;
 let panelElement: HTMLElement | null = null;
 let panelToggleButton: HTMLElement | null = null;
+let cardUiRefreshPending = false;
 
 function logInfo(message: string, data?: unknown): void {
 	if (data === undefined) {
@@ -241,6 +242,133 @@ function getExtensionSettings(context: NarratorRuntimeContext): NarratorSettings
 	}
 
 	return mergedSettings;
+}
+
+function getCharacterIndexFromCard(card: Element): number | undefined {
+	const chid = card.getAttribute('data-chid') ?? card.getAttribute('data-id') ?? '';
+	const numericChid = Number(chid);
+	return Number.isFinite(numericChid) ? numericChid : undefined;
+}
+
+function getCharacterFromCard(card: Element, context: NarratorRuntimeContext): CharacterRecord | undefined {
+	const characterIndex = getCharacterIndexFromCard(card);
+	if (characterIndex === undefined) {
+		return undefined;
+	}
+
+	return getCharacters(context)[characterIndex];
+}
+
+function ensureCardStatusBadge(card: Element): HTMLElement | null {
+	const existingBadge = card.querySelector<HTMLElement>('.narrator-helper-card-badge');
+	if (existingBadge) {
+		return existingBadge;
+	}
+
+	const nameBlock = card.querySelector<HTMLElement>('.character_name_block') ?? card.querySelector<HTMLElement>('.group_member_name') ?? card.querySelector<HTMLElement>('.ch_name')?.parentElement ?? card;
+	if (!nameBlock) {
+		return null;
+	}
+
+	const badge = document.createElement('button');
+	badge.type = 'button';
+	badge.className = 'narrator-helper-card-badge interactable';
+	badge.setAttribute('aria-label', 'Open narrator helper');
+	badge.title = 'Open narrator helper';
+	badge.textContent = 'Narrator';
+	nameBlock.appendChild(badge);
+	return badge;
+}
+
+function updateCardBadge(card: Element, context: NarratorRuntimeContext): void {
+	const character = getCharacterFromCard(card, context);
+	const badge = ensureCardStatusBadge(card);
+	if (!badge) {
+		return;
+	}
+
+	if (!character) {
+		badge.classList.remove('is-narrator');
+		badge.textContent = 'Narrator';
+		badge.title = 'Open narrator helper';
+		return;
+	}
+
+	const narratorState = getNarratorState(character);
+	const isNarrator = Boolean(narratorState?.enabled);
+	badge.classList.toggle('is-narrator', isNarrator);
+	badge.textContent = isNarrator ? 'Narrator ★' : 'Narrator';
+	badge.title = isNarrator ? `Narrator enabled for ${character.name}` : `Mark ${character.name} as narrator`;
+}
+
+function renderCardUi(): void {
+	const context = getRuntimeContext();
+	const cards = document.querySelectorAll<HTMLElement>('#rm_print_characters_block .character_select, #rm_group_members .group_member, #rm_group_add_members .group_member');
+	for (const card of cards) {
+		updateCardBadge(card, context);
+	}
+}
+
+function scheduleCardUiRefresh(): void {
+	if (cardUiRefreshPending) {
+		return;
+	}
+
+	cardUiRefreshPending = true;
+	window.requestAnimationFrame(() => {
+		cardUiRefreshPending = false;
+		renderCardUi();
+	});
+}
+
+function openNarratorPanelForCard(card: Element): void {
+	const context = getRuntimeContext();
+	const characterIndex = getCharacterIndexFromCard(card);
+	if (characterIndex !== undefined) {
+		panelElement ??= null;
+		togglePanel(true);
+		const select = ensurePanel().querySelector<HTMLSelectElement>('[data-role="character-select"]');
+		if (select) {
+			select.value = String(characterIndex);
+		}
+		updatePanelControls();
+		return;
+	}
+
+	const currentCharacter = getCurrentCharacter(context);
+	if (currentCharacter) {
+		togglePanel(true);
+		updatePanelControls();
+	}
+}
+
+function attachCardUiEvents(): void {
+	if (document.body.dataset.narratorHelperCardUi === '1') {
+		return;
+	}
+
+	document.body.dataset.narratorHelperCardUi = '1';
+
+	document.addEventListener('click', (event) => {
+		const target = event.target;
+		if (!(target instanceof Element)) {
+			return;
+		}
+
+		const badge = target.closest('.narrator-helper-card-badge');
+		if (!badge) {
+			return;
+		}
+
+		const card = badge.closest('.character_select, .group_member');
+		if (!card) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+		openNarratorPanelForCard(card);
+	});
 }
 
 function saveExtensionSettings(context: NarratorRuntimeContext): void {
@@ -1427,10 +1555,11 @@ async function bootstrap(): Promise<void> {
 	injectStyles();
 	ensurePanel();
 	ensureMenuButton();
+	attachCardUiEvents();
 	registerEventHandlers();
 	try {
 		await registerSlashCommand();
-		logInfo('slash command registered: /narrator');
+		logInfo('STscript command registered: /narrator (available in the slash-command parser / prompt tools).');
 	} catch (error) {
 		logError('failed to register slash command.', error);
 	}
@@ -1455,6 +1584,7 @@ async function bootstrap(): Promise<void> {
 			logInfo('APP_READY received; refreshing narrator helper state.');
 			ensureMenuButton();
 			renderPanel();
+			scheduleCardUiRefresh();
 			void syncNarratorPrompt().catch((error) => logError('failed to sync narrator prompt after APP_READY.', error));
 		});
 	} else {
