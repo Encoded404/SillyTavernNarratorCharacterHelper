@@ -50,8 +50,8 @@ type NarratorSettings = {
 type NarratorRuntimeContext = {
 	characters?: Array<CharacterRecord>;
 	groups?: Array<GroupRecord>;
-	characterId?: number;
-	this_chid?: number;
+	characterId?: number | string;
+	this_chid?: number | string;
 	groupId?: string | null;
 	name1?: string;
 	name2?: string;
@@ -295,10 +295,14 @@ function injectNarratorButtonIntoCharacterPanel(): void {
 	btn.innerHTML = '<i class="fa-fw fa-solid fa-feather-pointed"></i><span>Narrator</span>';
 	btn.addEventListener('click', () => {
 		const context = getRuntimeContext();
+		logInfo(`Narrator button clicked. context.characterId=${JSON.stringify(context.characterId)}, context.this_chid=${JSON.stringify(context.this_chid)}`);
+
 		let charId = getCurrentCharacterId(context);
+		logInfo(`getCurrentCharacterId returned: ${charId}`);
 
 		if (charId === undefined) {
 			charId = getEditedCharacterIdFromPanel();
+			logInfo(`getEditedCharacterIdFromPanel returned: ${charId}`);
 		}
 
 		if (charId !== undefined) {
@@ -642,8 +646,22 @@ function getCurrentCharacterId(context: NarratorRuntimeContext): number | undefi
 		return context.characterId;
 	}
 
+	if (typeof context.characterId === 'string') {
+		const parsed = Number(context.characterId);
+		if (Number.isFinite(parsed)) {
+			return parsed;
+		}
+	}
+
 	if (typeof context.this_chid === 'number') {
 		return context.this_chid;
+	}
+
+	if (typeof context.this_chid === 'string') {
+		const parsed = Number(context.this_chid);
+		if (Number.isFinite(parsed)) {
+			return parsed;
+		}
 	}
 
 	return undefined;
