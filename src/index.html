@@ -1,1 +1,127 @@
-<h1 class="hello-world-message">Hello World!</h1>
+<div class="narrator-helper-panel is-hidden" id="narrator-helper-panel" aria-hidden="true">
+	<div class="narrator-helper-panel__header">
+		<div>
+			<p class="narrator-helper-panel__eyebrow">SillyTavern Extension</p>
+			<h2 class="narrator-helper-panel__title">Narrator Character Helper</h2>
+			<p class="narrator-helper-panel__subtitle">
+				Mark a character as a narrator or all-knowing entity and inject a private briefing for the current group.
+			</p>
+		</div>
+		<button class="narrator-helper-panel__close" data-action="close" type="button" aria-label="Close narrator helper">×</button>
+	</div>
+
+	<div class="narrator-helper-panel__status">
+		<span data-role="active-status">No narrator selected.</span>
+		<span data-role="group-status">No group selected.</span>
+	</div>
+
+	<div class="narrator-helper-panel__grid">
+		<label class="narrator-helper-panel__wide">
+			<span>Character</span>
+			<select data-role="character-select"></select>
+		</label>
+
+		<label>
+			<span>Prompt position</span>
+			<select data-role="position-select">
+				<option value="2">Before main prompt / story string</option>
+				<option value="0" selected>After main prompt / story string</option>
+				<option value="1">In-chat @ depth</option>
+			</select>
+		</label>
+
+		<label>
+			<span>Depth</span>
+			<input data-role="depth-input" min="0" max="9999" type="number" value="4" />
+		</label>
+	</div>
+
+	<div class="narrator-helper-panel__flags">
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-description" type="checkbox" />
+			<span><strong>Description</strong><small>Include character descriptions in the narrator briefing.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-personality" type="checkbox" />
+			<span><strong>Personality</strong><small>Include personality fields for each character.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-scenario" type="checkbox" />
+			<span><strong>Scenario</strong><small>Include scenario/background details.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-first-message" type="checkbox" />
+			<span><strong>First message</strong><small>Include opening lines when they exist.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-example-messages" type="checkbox" />
+			<span><strong>Example messages</strong><small>Include sample dialogue snippets.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-creator-notes" type="checkbox" />
+			<span><strong>Creator notes</strong><small>Include author notes and commentary.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-system-prompt" type="checkbox" />
+			<span><strong>System prompt</strong><small>Include any saved system prompt for the character.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-post-history" type="checkbox" />
+			<span><strong>Post-history instructions</strong><small>Include instructions applied after chat history.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-tags" type="checkbox" />
+			<span><strong>Tags</strong><small>Include tags for fast character reference.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-books" type="checkbox" />
+			<span><strong>Character books</strong><small>Include embedded lorebooks from each character card.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input checked data-role="include-world-info" type="checkbox" />
+			<span><strong>Linked lorebooks</strong><small>Include world info file references linked to each character.</small></span>
+		</label>
+		<label class="narrator-helper-panel__flag">
+			<input data-role="include-disabled" type="checkbox" />
+			<span><strong>Muted members</strong><small>Include disabled group members in the briefing.</small></span>
+		</label>
+	</div>
+
+	<div class="narrator-helper-panel__grid narrator-helper-panel__wide">
+		<label>
+			<span>Character book entry limit</span>
+			<input data-role="max-book-entries" min="1" max="100" type="number" value="12" />
+		</label>
+		<label>
+			<span>Character book entry length</span>
+			<input data-role="max-book-entry-length" min="32" max="2000" type="number" value="260" />
+		</label>
+		<label>
+			<span>World info entry limit</span>
+			<input data-role="max-world-entries" min="1" max="100" type="number" value="12" />
+		</label>
+		<label>
+			<span>World info entry length</span>
+			<input data-role="max-world-entry-length" min="32" max="2000" type="number" value="260" />
+		</label>
+	</div>
+
+	<div class="narrator-helper-panel__field narrator-helper-panel__wide">
+		<span>Narrator instructions</span>
+		<textarea data-role="instructions" rows="6" placeholder="Optional per-character instructions. Leave blank to use the default omniscient briefing language."></textarea>
+	</div>
+
+	<div class="narrator-helper-panel__actions">
+		<button data-action="enable" type="button">Mark narrator</button>
+		<button data-action="disable" type="button">Disable</button>
+		<button data-action="clear" type="button">Clear card data</button>
+		<button data-action="save-instructions" type="button">Save instructions</button>
+		<button data-action="preview" type="button">Preview briefing</button>
+		<button data-action="refresh" type="button">Refresh</button>
+	</div>
+
+	<div class="narrator-helper-panel__preview narrator-helper-panel__wide">
+		<span>Preview</span>
+		<textarea data-role="preview" readonly placeholder="Use Preview briefing to inspect the exact text injected into the prompt."></textarea>
+	</div>
+</div>

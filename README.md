@@ -1,16 +1,22 @@
-# Extension-WebpackTemplate
+# Narrator Character Helper
 
-Template repository for SillyTavern extensions using TypeScript and Webpack (no React).
+This SillyTavern extension lets you mark any character as a narrator or omniscient entity, then injects a private briefing containing the group roster, character dossiers, and linked lorebook summaries into the prompt.
 
-## How to use
+## Features
 
-1. Click "Use this template" on the GitHub page.
-2. Create a new repository and clone it to your local machine.
-3. Open the repository in your code editor and run `npm install`.
-4. Edit the `manifest.json` file.
-5. Write the source code in `src` directory.
-6. When you're ready to test - run `npm run build`.
-7. Minimized bundle will appear in `dist`, ready to be plugged into SillyTavern.
+- Mark or clear narrator status directly on a character card.
+- Build a narrator briefing from group members, character cards, embedded character books, and linked world info files.
+- Skip muted group members by default, with a toggle to include them.
+- Open a built-in control panel from the SillyTavern extensions menu.
+- Use the `/narrator` slash command to toggle narrator status or preview the current briefing.
 
-> [!TIP]
-> If you want to test your extension live, clone the repo into the `/public/scripts/extensions/third-party` of your SillyTavern installation.
+## Development
+
+1. Install dependencies with `npm install`.
+2. Build the bundle with `npm run build`.
+3. Copy the extension into your SillyTavern `third-party` extensions folder or use the compiled `dist/index.js` from this repo.
+
+## Notes
+
+- Narrator state is stored on the character card under the extension field `narrator_character_helper`.
+- The prompt is injected with SillyTavern's extension prompt system so it follows the normal prompt pipeline.
