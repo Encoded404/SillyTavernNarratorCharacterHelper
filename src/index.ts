@@ -256,6 +256,8 @@ let refreshTimer = 0;
 let narratorModalOpen = false;
 let narratorModalRoot: HTMLElement | null = null;
 let capturedModalValues: CapturedModalValues | null = null;
+let originalNarratorLorebooks: CharLoreSetting | null = null;
+let generationInProgress = false;
 
 function logInfo(message: string, data?: unknown): void {
 	if (data === undefined) {
@@ -797,66 +799,119 @@ function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext): Set<st
 	return lorebooks;
 }
 
-async function forceActivateGroupLorebooks(context: NarratorRuntimeContext): Promise<void> {
-	logInfo('forceActivateGroupLorebooks: called.');
+async function saveNarratorLorebooks(context: NarratorRuntimeContext): Promise<void> {
+	const currentCharacter = getCurrentCharacter(context);
+	if (!currentCharacter) {
+		logInfo('saveNarratorLorebooks: no current character.');
+		return;
+	}
+
+	const narratorState = getNarratorState(currentCharacter);
+	if (!narratorState?.enabled) {
+		logInfo('saveNarratorLorebooks: narrator not enabled for current character.');
+		return;
+	}
+
+	const avatar = currentCharacter.avatar;
+	const extensionSettings = (globalThis as unknown as { extension_settings?: Record<string, unknown> }).extension_settings as Record<string, unknown> | undefined;
+	const worldInfoSettings = extensionSettings?.world_info as { charLore?: CharLoreSetting[] } | undefined;
+	const charLore = worldInfoSettings?.charLore;
+
+	if (charLore) {
+		const existing = charLore.find((e) => e.name === avatar);
+		if (existing) {
+			originalNarratorLorebooks = { ...existing, extraBooks: existing.extraBooks ? [...existing.extraBooks] : undefined };
+			logInfo(`saveNarratorLorebooks: saved original lorebooks for "${avatar}": ${JSON.stringify(originalNarratorLorebooks)}`);
+			return;
+		}
+	}
+
+	originalNarratorLorebooks = { name: avatar, extraBooks: [] };
+	logInfo(`saveNarratorLorebooks: no existing lorebooks for "${avatar}", initialized empty.`);
+}
+
+async function injectGroupLorebooks(context: NarratorRuntimeContext): Promise<void> {
 	const lorebookNames = getAllGroupMemberLorebookNames(context);
-	logInfo(`forceActivateGroupLorebooks: found ${lorebookNames.size} lorebook names: ${[...lorebookNames].join(', ') || '(none)'}`);
+	logInfo(`injectGroupLorebooks: found ${lorebookNames.size} lorebook names: ${[...lorebookNames].join(', ') || '(none)'}`);
+
 	if (lorebookNames.size === 0) {
 		return;
 	}
 
-	const alreadyActive = new Set<string>();
-	const globalSettings = (globalThis as unknown as { extension_settings?: Record<string, unknown> }).extension_settings as Record<string, unknown> | undefined;
-	const worldInfo = globalSettings?.world_info as { globalSelect?: string[] } | undefined;
-	if (worldInfo?.globalSelect) {
-		for (const name of worldInfo.globalSelect) {
-			alreadyActive.add(name);
-		}
+	const currentCharacter = getCurrentCharacter(context);
+	if (!currentCharacter) {
+		logWarn('injectGroupLorebooks: no current character.');
+		return;
 	}
-	logInfo(`forceActivateGroupLorebooks: ${alreadyActive.size} lorebooks already active globally: ${[...alreadyActive].join(', ') || '(none)'}`);
 
-	const entriesToActivate: WorldInfoForceActivateEntry[] = [];
+	const avatar = currentCharacter.avatar;
+	const extensionSettings = (globalThis as unknown as { extension_settings?: Record<string, unknown> }).extension_settings as Record<string, unknown> | undefined;
+	const worldInfoSettings = extensionSettings?.world_info as { charLore?: CharLoreSetting[] } | undefined;
+
+	if (!worldInfoSettings) {
+		logWarn('injectGroupLorebooks: world_info settings not found.');
+		return;
+	}
+
+	if (!worldInfoSettings.charLore) {
+		worldInfoSettings.charLore = [];
+	}
+
+	let narratorLoreSetting = worldInfoSettings.charLore.find((e) => e.name === avatar);
+	if (!narratorLoreSetting) {
+		narratorLoreSetting = { name: avatar, extraBooks: [] };
+		worldInfoSettings.charLore.push(narratorLoreSetting);
+	}
+
+	if (!narratorLoreSetting.extraBooks) {
+		narratorLoreSetting.extraBooks = [];
+	}
 
 	for (const bookName of lorebookNames) {
-		if (alreadyActive.has(bookName)) {
-			logInfo(`forceActivateGroupLorebooks: skipping "${bookName}" (already active globally).`);
-			continue;
-		}
-
-		const loader = context.loadWorldInfo;
-		if (typeof loader !== 'function') {
-			logWarn(`forceActivateGroupLorebooks: loadWorldInfo not available, skipping "${bookName}".`);
-			continue;
-		}
-
-		try {
-			logInfo(`forceActivateGroupLorebooks: loading lorebook "${bookName}"...`);
-			const data = await loader(bookName);
-			const entryCount = Object.keys(data?.entries ?? {}).length;
-			logInfo(`forceActivateGroupLorebooks: loaded "${bookName}", has ${entryCount} entries.`);
-			if (!data?.entries) continue;
-
-			for (const [uid, entry] of Object.entries(data.entries)) {
-				if (entry && typeof entry === 'object' && 'uid' in entry) {
-					entriesToActivate.push({ world: bookName, uid: (entry as WorldInfoBookEntry).uid ?? uid });
-				} else {
-					entriesToActivate.push({ world: bookName, uid });
-				}
-			}
-		} catch (error) {
-			logWarn(`forceActivateGroupLorebooks: failed to load lorebook "${bookName}"`, error);
+		if (!narratorLoreSetting.extraBooks.includes(bookName)) {
+			narratorLoreSetting.extraBooks.push(bookName);
+			logInfo(`injectGroupLorebooks: added "${bookName}" to narrator's extra books.`);
 		}
 	}
 
-	logInfo(`forceActivateGroupLorebooks: ${entriesToActivate.length} entries collected for force activation.`);
+	logInfo(`injectGroupLorebooks: final extra books for "${avatar}": ${JSON.stringify(narratorLoreSetting.extraBooks)}`);
+}
 
-	if (entriesToActivate.length > 0 && context.eventSource?.emit) {
-		logInfo(`forceActivateGroupLorebooks: emitting WORLDINFO_FORCE_ACTIVATE with ${entriesToActivate.length} entries.`);
-		await context.eventSource.emit('WORLDINFO_FORCE_ACTIVATE', entriesToActivate);
-		logInfo('forceActivateGroupLorebooks: WORLDINFO_FORCE_ACTIVATE emitted successfully.');
+async function restoreNarratorLorebooks(context: NarratorRuntimeContext): Promise<void> {
+	if (!originalNarratorLorebooks) {
+		logInfo('restoreNarratorLorebooks: no saved lorebooks to restore.');
+		return;
+	}
+
+	const extensionSettings = (globalThis as unknown as { extension_settings?: Record<string, unknown> }).extension_settings as Record<string, unknown> | undefined;
+	const worldInfoSettings = extensionSettings?.world_info as { charLore?: CharLoreSetting[] } | undefined;
+
+	if (!worldInfoSettings?.charLore) {
+		logWarn('restoreNarratorLorebooks: world_info settings not found.');
+		originalNarratorLorebooks = null;
+		return;
+	}
+
+	const avatar = originalNarratorLorebooks.name;
+	const existingIndex = worldInfoSettings.charLore.findIndex((e) => e.name === avatar);
+
+	if (originalNarratorLorebooks.extraBooks && originalNarratorLorebooks.extraBooks.length === 0) {
+		if (existingIndex !== -1) {
+			worldInfoSettings.charLore.splice(existingIndex, 1);
+			logInfo(`restoreNarratorLorebooks: removed lore setting for "${avatar}" (was empty originally).`);
+		}
 	} else {
-		logWarn(`forceActivateGroupLorebooks: could not emit event. eventSource=${!!context.eventSource}, emit=${!!context.eventSource?.emit}, entries=${entriesToActivate.length}`);
+		if (existingIndex !== -1) {
+			worldInfoSettings.charLore[existingIndex] = { ...originalNarratorLorebooks };
+			logInfo(`restoreNarratorLorebooks: restored lore setting for "${avatar}": ${JSON.stringify(originalNarratorLorebooks)}`);
+		} else {
+			worldInfoSettings.charLore.push({ ...originalNarratorLorebooks });
+			logInfo(`restoreNarratorLorebooks: re-added lore setting for "${avatar}": ${JSON.stringify(originalNarratorLorebooks)}`);
+		}
 	}
+
+	originalNarratorLorebooks = null;
+	logInfo('restoreNarratorLorebooks: restoration complete.');
 }
 
 function getCurrentCharacterId(context: NarratorRuntimeContext): number | undefined {
@@ -932,6 +987,23 @@ function normalizeText(value: unknown): string {
 	return value.trim();
 }
 
+function truncateText(value: string, maxLength: number): string {
+	const text = value.trim();
+	if (!text || text.length <= maxLength) {
+		return text;
+	}
+
+	return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function replaceCommonMacros(text: string, characterName: string, context: NarratorRuntimeContext): string {
+	const userName = normalizeText(context.name1) || 'User';
+	return text
+		.replace(/\{\{\s*char\s*\}\}/gi, characterName)
+		.replace(/\{\{\s*name\s*\}\}/gi, characterName)
+		.replace(/\{\{\s*user\s*\}\}/gi, userName);
+}
+
 function formatListItem(label: string, value: string): string {
 	const text = normalizeText(value);
 	if (!text) {
@@ -939,6 +1011,48 @@ function formatListItem(label: string, value: string): string {
 	}
 
 	return `- ${label}: ${text}`;
+}
+
+function summarizeEntries(entries: WorldInfoBookEntry[], limit: number, maxLength: number, characterName: string, context: NarratorRuntimeContext): string {
+	if (!entries.length) {
+		return '';
+	}
+
+	const previewLines: string[] = [];
+	for (const entry of entries.slice(0, limit)) {
+		const keyList = Array.isArray(entry.keys) ? entry.keys : Array.isArray(entry.key) ? entry.key : [];
+		const comment = normalizeText(entry.comment ?? '');
+		const content = truncateText(replaceCommonMacros(normalizeText(entry.content), characterName, context), maxLength);
+		const headerParts = [keyList.length ? keyList.join(', ') : 'entry'];
+
+		if (comment) {
+			headerParts.push(comment);
+		}
+
+		previewLines.push(`- ${headerParts.join(' | ')}`);
+
+		if (content) {
+			previewLines.push(`  Content: ${content}`);
+		}
+	}
+
+	if (entries.length > limit) {
+		previewLines.push(`- ... ${entries.length - limit} more entr${entries.length - limit === 1 ? 'y' : 'ies'} omitted`);
+	}
+
+	return previewLines.join('\n');
+}
+
+function getBookEntries(book: WorldInfoBook | undefined): WorldInfoBookEntry[] {
+	if (!book?.entries) {
+		return [];
+	}
+
+	if (Array.isArray(book.entries)) {
+		return book.entries.filter((entry): entry is WorldInfoBookEntry => Boolean(entry));
+	}
+
+	return Object.values(book.entries).filter((entry): entry is WorldInfoBookEntry => Boolean(entry));
 }
 
 function buildCharacterDossier(context: NarratorRuntimeContext, character: CharacterRecord, settings: NarratorSettings): string {
@@ -1441,16 +1555,45 @@ function registerEventHandlers(): void {
 		});
 	}
 
-	eventSource.on(eventTypes.GENERATION_STARTED, () => {
+	eventSource.on(eventTypes.GROUP_MEMBER_DRAFTED, () => {
+		logInfo('GROUP_MEMBER_DRAFTED fired.');
+	});
+
+	eventSource.on(eventTypes.GROUP_WRAPPER_STARTED, () => {
+		logInfo('GROUP_WRAPPER_STARTED fired.');
+	});
+
+	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, async () => {
+		logInfo('WORLDINFO_ENTRIES_LOADED fired.');
+	});
+
+	eventSource.on(eventTypes.WORLDINFO_SCAN_DONE, () => {
+		logInfo('WORLDINFO_SCAN_DONE fired.');
+	});
+
+	eventSource.on(eventTypes.GENERATION_STARTED, async () => {
 		logInfo('GENERATION_STARTED fired.');
+		const ctx = getRuntimeContext();
+		if (generationInProgress) {
+			logInfo('GENERATION_STARTED: generation already in progress, skipping.');
+			return;
+		}
+		generationInProgress = true;
+		await saveNarratorLorebooks(ctx);
+		await injectGroupLorebooks(ctx);
 	});
 
 	eventSource.on(eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, () => {
 		logInfo('GENERATE_AFTER_COMBINE_PROMPTS fired.');
 	});
 
-	eventSource.on(eventTypes.GENERATE_AFTER_DATA, () => {
+	eventSource.on(eventTypes.GENERATE_AFTER_DATA, async () => {
 		logInfo('GENERATE_AFTER_DATA fired.');
+		const ctx = getRuntimeContext();
+		if (generationInProgress) {
+			await restoreNarratorLorebooks(ctx);
+			generationInProgress = false;
+		}
 	});
 
 	const generateEvent = eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS;
@@ -1460,10 +1603,8 @@ function registerEventHandlers(): void {
 		eventSource.on(generateEvent, () => {
 			const ctx = getRuntimeContext();
 			logInfo(`GENERATE_BEFORE_COMBINE_PROMPTS fired: groupId=${ctx.groupId}, this_chid=${ctx.this_chid}, characterId=${ctx.characterId}`);
-			logInfo(`GENERATE_BEFORE_COMBINE_PROMPTS: eventSource=${!!ctx.eventSource}, emit=${!!ctx.eventSource?.emit}, loadWorldInfo=${!!ctx.loadWorldInfo}`);
-			void forceActivateGroupLorebooks(ctx);
 		});
-		logInfo('registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS handler registered.');
+		logInfo('registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS handler registered (no-op).');
 	} else {
 		logWarn('registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS event type not found in eventTypes!');
 		logInfo('registerEventHandlers: searching for generation-related events:', Object.keys(eventTypes).filter((k) => k.includes('GENERATE') || k.includes('COMBINE') || k.includes('PROMPT')));
