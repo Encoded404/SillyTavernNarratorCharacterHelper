@@ -49,7 +49,7 @@ export default {
 	externals: {
 		// SillyTavern modules - resolved at runtime by the extension loader
 		'world-info.js': '../../../../../scripts/world-info.js',
-		'script.js': '../../../../../scripts/script.js',
+		'script.js': '../../../../../script.js',
 		'extensions.js': '../../../../../scripts/extensions.js',
 		'utils.js': '../../../../../scripts/utils.js',
 	},
