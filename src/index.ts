@@ -891,7 +891,7 @@ function saveNarratorLorebooks(context: NarratorRuntimeContext, narratorAvatar: 
 	}
 
 	if (!worldInfo.charLore) {
-		logWarn('saveNarratorLorebooks: charLore not initialized in world_info.');
+		logWarn('saveNarratorLorebooks: charLore not initialized in world_info. here is the world_info object for debugging:', worldInfo);
 		originalNarratorLorebooks = [];
 		return;
 	}
