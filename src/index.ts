@@ -266,21 +266,25 @@ function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
 		return cachedWorldInfo;
 	}
 
+    const sillyTavern = (globalThis as { SillyTavern?: Record<string, unknown> }).SillyTavern
+    if (sillyTavern) {
+        const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
+        if (worldInfo && !(worldInfo instanceof HTMLElement) && worldInfo.charLore) {
+            logInfo(`getWorldInfo: found charLore on SillyTavern.world_info with ${worldInfo.charLore.length} entries.`);
+            cachedWorldInfo = worldInfo;
+            return cachedWorldInfo;
+        }
+        else
+        {
+            logWarn('getWorldInfo: SillyTavern.world_info found but charLore is missing or invalid.', { worldInfo });
+        }
+    }
+    
 	const selectElement = document.getElementById('world_info') as HTMLSelectElement & { charLore?: CharLoreSetting[] } | null;
 	if (selectElement?.charLore) {
 		logInfo(`getWorldInfo: found charLore on DOM element with ${selectElement.charLore.length} entries.`);
 		cachedWorldInfo = { charLore: selectElement.charLore };
 		return cachedWorldInfo;
-	}
-
-	const sillyTavern = (globalThis as unknown as { SillyTavern?: Record<string, unknown> }).SillyTavern;
-	if (sillyTavern) {
-		const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
-		if (worldInfo && !(worldInfo instanceof HTMLElement) && worldInfo.charLore) {
-			logInfo(`getWorldInfo: found charLore on SillyTavern.world_info with ${worldInfo.charLore.length} entries.`);
-			cachedWorldInfo = worldInfo;
-			return cachedWorldInfo;
-		}
 	}
 
 	logInfo('getWorldInfo: could not find world_info.charLore.');
