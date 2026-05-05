@@ -44,9 +44,10 @@ export default {
 	},
 	externals: {
 		// SillyTavern modules - resolved at runtime by the extension loader
-		'../../../../scripts/world-info.js': 'world-info',
-		'../../../../script.js': 'script',
-		'../../../../scripts/extensions.js': 'extensions',
-		'../../../../scripts/utils.js': 'utils',
+		// Format: 'import path': 'commonjs runtime path'
+		'../../../../scripts/world-info.js': 'commonjs ../../../../scripts/world-info.js',
+		'../../../../script.js': 'commonjs ../../../../script.js',
+		'../../../../scripts/extensions.js': 'commonjs ../../../../scripts/extensions.js',
+		'../../../../scripts/utils.js': 'commonjs ../../../../scripts/utils.js',
 	},
 };

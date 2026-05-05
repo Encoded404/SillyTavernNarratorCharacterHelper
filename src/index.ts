@@ -1,5 +1,5 @@
 import './style.css';
-// @ts-ignore - SillyTavern modules resolved at runtime via extension path mapping
+// @ts-ignore - SillyTavern modules resolved at runtime via webpack externals
 import { world_info, charSetAuxWorlds } from '../../../../scripts/world-info.js';
 // @ts-ignore
 import { saveSettingsDebounced, eventSource, event_types, this_chid, characters, selected_group, groups } from '../../../../script.js';
@@ -826,18 +826,18 @@ function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext, exclude
 			logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has no primary lorebook.`);
 		}
 
-	const charLoreKey = getCharLoreKey(avatar);
-	const charExtra = world_info.charLore?.find((e: CharLoreSetting) => e.name === charLoreKey);
-	if (charExtra?.extraBooks && Array.isArray(charExtra.extraBooks)) {
-		for (const book of charExtra.extraBooks) {
-			if (book) {
-				lorebooks.add(book);
-				logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has extra lorebook "${book}"`);
+		const charLoreKey = getCharLoreKey(avatar);
+		const charExtra = world_info.charLore?.find((e: CharLoreSetting) => e.name === charLoreKey);
+		if (charExtra?.extraBooks && Array.isArray(charExtra.extraBooks)) {
+			for (const book of charExtra.extraBooks) {
+				if (book) {
+					lorebooks.add(book);
+					logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has extra lorebook "${book}"`);
+				}
 			}
+		} else {
+			logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has no extra lorebooks (charLoreKey="${charLoreKey}").`);
 		}
-	} else {
-		logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has no extra lorebooks (charLoreKey="${charLoreKey}").`);
-	}
 	}
 
 	logInfo(`getAllGroupMemberLorebookNames: total unique lorebooks=${[...lorebooks].join(', ') || '(none)'}`);
@@ -1613,10 +1613,10 @@ function registerEventHandlers(): void {
 			const characters = getCharacters(ctx);
 			const narratorCharacter = characters[narratorIndex];
 			if (narratorCharacter) {
-			const avatar = narratorCharacter.avatar;
-			const charLoreKey = getCharLoreKey(avatar);
-			const charLore = world_info.charLore?.find((e: CharLoreSetting) => e.name === charLoreKey);
-			logInfo(`CHAT_COMPLETION_PROMPT_READY: narrator avatar="${avatar}", charLoreKey="${charLoreKey}", extraBooks=${JSON.stringify(charLore?.extraBooks ?? [])}`);
+				const avatar = narratorCharacter.avatar;
+				const charLoreKey = getCharLoreKey(avatar);
+				const charLore = world_info.charLore?.find((e: CharLoreSetting) => e.name === charLoreKey);
+				logInfo(`CHAT_COMPLETION_PROMPT_READY: narrator avatar="${avatar}", charLoreKey="${charLoreKey}", extraBooks=${JSON.stringify(charLore?.extraBooks ?? [])}`);
 			}
 		}
 	});
