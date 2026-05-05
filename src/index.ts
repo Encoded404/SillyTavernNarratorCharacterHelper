@@ -262,7 +262,7 @@ let cachedWorldInfo: { charLore?: CharLoreSetting[] } | undefined = undefined;
 
 function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
 	if (cachedWorldInfo?.charLore) {
-		logInfo(`getWorldInfo: returning cached charLore with ${cachedWorldInfo.charLore.length} entries.`);
+		logInfo(`getWorldInfo: returning cached charLore with ${cachedWorldInfo.charLore.length} entries. here is the full object:`, cachedWorldInfo);
 		return cachedWorldInfo;
 	}
     else
