@@ -258,82 +258,15 @@ let narratorModalRoot: HTMLElement | null = null;
 let capturedModalValues: CapturedModalValues | null = null;
 let originalNarratorLorebooks: string[] | null = null;
 let currentSpeakerId: number | undefined = undefined;
+let worldInfoRef: { charLore?: CharLoreSetting[] } | null = null;
 
-type WorldInfoModule = {
-	charUpdateAddAuxWorld?: (characterKey: string, nameOrNames: string | string[]) => Promise<void>;
-	world_info?: {
-		charLore?: CharLoreSetting[];
-	};
-};
-
-let worldInfoModule: WorldInfoModule | null = null;
-
-async function initWorldInfoModule(): Promise<void> {
-	if (worldInfoModule !== null) return;
-	try {
-		// @ts-ignore - Runtime module, not available at build time
-		const baseUrl = window.location.origin;
-		const module = await import(`${baseUrl}/scripts/world-info.js`);
-		worldInfoModule = {
-			charUpdateAddAuxWorld: module.charUpdateAddAuxWorld,
-			world_info: module.world_info,
-		};
-		logInfo('initWorldInfoModule: Successfully loaded world-info module.');
-		logInfo(`initWorldInfoModule: charUpdateAddAuxWorld available=${!!module.charUpdateAddAuxWorld}`);
-	} catch (e) {
-		logError('initWorldInfoModule: Failed to load world-info module', e);
-		worldInfoModule = null;
-	}
+function setWorldInfoRef(worldInfo: { charLore?: CharLoreSetting[] }): void {
+	worldInfoRef = worldInfo;
+	logInfo('setWorldInfoRef: world_info reference captured.');
 }
 
 function getWorldInfo(): { charLore?: CharLoreSetting[] } | null {
-	return worldInfoModule?.world_info ?? null;
-}
-
-async function addAuxLorebooks(characterKey: string, lorebookNames: string[]): Promise<void> {
-	if (worldInfoModule?.charUpdateAddAuxWorld) {
-		await worldInfoModule.charUpdateAddAuxWorld(characterKey, lorebookNames);
-		logInfo(`addAuxLorebooks: Used charUpdateAddAuxWorld for "${characterKey}" with ${lorebookNames.length} books.`);
-	} else {
-		// Fallback: manually modify world_info.charLore
-		const worldInfo = getWorldInfo();
-		if (!worldInfo) {
-			logWarn('addAuxLorebooks: world_info not available.');
-			return;
-		}
-		if (!worldInfo.charLore) {
-			worldInfo.charLore = [];
-		}
-		let narratorLoreSetting = worldInfo.charLore.find((e) => e.name === characterKey);
-		if (!narratorLoreSetting) {
-			narratorLoreSetting = { name: characterKey, extraBooks: [] };
-			worldInfo.charLore.push(narratorLoreSetting);
-		}
-		if (!narratorLoreSetting.extraBooks) {
-			narratorLoreSetting.extraBooks = [];
-		}
-		for (const bookName of lorebookNames) {
-			if (!narratorLoreSetting.extraBooks.includes(bookName)) {
-				narratorLoreSetting.extraBooks.push(bookName);
-			}
-		}
-		logInfo(`addAuxLorebooks: Used fallback manual method for "${characterKey}" with ${lorebookNames.length} books.`);
-	}
-}
-
-async function setAuxLorebooks(characterKey: string, lorebookNames: string[]): Promise<void> {
-	const worldInfo = getWorldInfo();
-	if (!worldInfo || !worldInfo.charLore) {
-		logWarn('setAuxLorebooks: world_info not available.');
-		return;
-	}
-	let narratorLoreSetting = worldInfo.charLore.find((e) => e.name === characterKey);
-	if (!narratorLoreSetting) {
-		narratorLoreSetting = { name: characterKey, extraBooks: [] };
-		worldInfo.charLore.push(narratorLoreSetting);
-	}
-	narratorLoreSetting.extraBooks = [...lorebookNames];
-	logInfo(`setAuxLorebooks: Set "${characterKey}" extra books to: ${JSON.stringify(lorebookNames)}`);
+	return worldInfoRef;
 }
 
 function getCharLoreKey(avatar: string): string {
@@ -924,7 +857,7 @@ function getGroups(context: NarratorRuntimeContext): GroupRecord[] {
 		return lorebooks;
 	}
 
-async function saveNarratorLorebooks(context: NarratorRuntimeContext, narratorAvatar: string): Promise<void> {
+function saveNarratorLorebooks(context: NarratorRuntimeContext, narratorAvatar: string): void {
 	const charLoreKey = getCharLoreKey(narratorAvatar);
 	const worldInfo = getWorldInfo();
 
@@ -951,7 +884,7 @@ async function saveNarratorLorebooks(context: NarratorRuntimeContext, narratorAv
 	}
 }
 
-async function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAvatar: string): Promise<void> {
+function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAvatar: string): void {
 	const charLoreKey = getCharLoreKey(narratorAvatar);
 	const lorebookNames = getAllGroupMemberLorebookNames(context, narratorAvatar);
 	logInfo(`injectGroupLorebooks: found ${lorebookNames.size} lorebook names: ${[...lorebookNames].join(', ') || '(none)'}`);
@@ -966,7 +899,6 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAva
 		return;
 	}
 
-	// Combine original lorebooks with group member lorebooks
 	const combinedLorebooks = new Set<string>(originalNarratorLorebooks ?? []);
 	for (const bookName of lorebookNames) {
 		combinedLorebooks.add(bookName);
@@ -975,7 +907,16 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAva
 	const combinedArray = [...combinedLorebooks];
 	logInfo(`injectGroupLorebooks: combined lorebooks for "${charLoreKey}": ${JSON.stringify(combinedArray)}`);
 
-	await setAuxLorebooks(charLoreKey, combinedArray);
+	if (!worldInfo.charLore) {
+		worldInfo.charLore = [];
+	}
+
+	let narratorLoreSetting = worldInfo.charLore.find((e) => e.name === charLoreKey);
+	if (!narratorLoreSetting) {
+		narratorLoreSetting = { name: charLoreKey, extraBooks: [] };
+		worldInfo.charLore.push(narratorLoreSetting);
+	}
+	narratorLoreSetting.extraBooks = combinedArray;
 
 	if (typeof context.saveSettingsDebounced === 'function') {
 		context.saveSettingsDebounced();
@@ -983,7 +924,7 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAva
 	}
 }
 
-async function restoreNarratorLorebooks(context: NarratorRuntimeContext, narratorAvatar: string): Promise<void> {
+function restoreNarratorLorebooks(context: NarratorRuntimeContext, narratorAvatar: string): void {
 	if (originalNarratorLorebooks === null) {
 		logInfo('restoreNarratorLorebooks: no saved lorebooks to restore.');
 		return;
@@ -992,7 +933,23 @@ async function restoreNarratorLorebooks(context: NarratorRuntimeContext, narrato
 	const charLoreKey = getCharLoreKey(narratorAvatar);
 	logInfo(`restoreNarratorLorebooks: restoring "${charLoreKey}" to: ${JSON.stringify(originalNarratorLorebooks)}`);
 
-	await setAuxLorebooks(charLoreKey, originalNarratorLorebooks);
+	const worldInfo = getWorldInfo();
+	if (!worldInfo) {
+		logWarn('restoreNarratorLorebooks: world_info not found.');
+		originalNarratorLorebooks = null;
+		return;
+	}
+
+	if (!worldInfo.charLore) {
+		worldInfo.charLore = [];
+	}
+
+	let narratorLoreSetting = worldInfo.charLore.find((e) => e.name === charLoreKey);
+	if (!narratorLoreSetting) {
+		narratorLoreSetting = { name: charLoreKey, extraBooks: [] };
+		worldInfo.charLore.push(narratorLoreSetting);
+	}
+	narratorLoreSetting.extraBooks = [...(originalNarratorLorebooks ?? [])];
 
 	if (typeof context.saveSettingsDebounced === 'function') {
 		context.saveSettingsDebounced();
@@ -1643,7 +1600,7 @@ function registerEventHandlers(): void {
 		});
 	}
 
-	eventSource.on(eventTypes.GROUP_MEMBER_DRAFTED, async (...args: unknown[]) => {
+	eventSource.on(eventTypes.GROUP_MEMBER_DRAFTED, (...args: unknown[]) => {
 		const chId = args[0] as number;
 		logInfo(`GROUP_MEMBER_DRAFTED fired. chId=${chId}`);
 		currentSpeakerId = chId;
@@ -1656,12 +1613,11 @@ function registerEventHandlers(): void {
 				const narratorState = getNarratorState(speakerCharacter);
 				if (narratorState?.enabled) {
 					logInfo('GROUP_MEMBER_DRAFTED: speaker is a narrator.');
-					await initWorldInfoModule();
 					const narratorAvatar = speakerCharacter.avatar;
 					logInfo('GROUP_MEMBER_DRAFTED: saving narrator lorebooks.');
-					await saveNarratorLorebooks(ctx, narratorAvatar);
+					saveNarratorLorebooks(ctx, narratorAvatar);
 					logInfo('GROUP_MEMBER_DRAFTED: injecting group lorebooks.');
-					await injectGroupLorebooks(ctx, narratorAvatar);
+					injectGroupLorebooks(ctx, narratorAvatar);
 				}
 			}
 		}
@@ -1671,29 +1627,32 @@ function registerEventHandlers(): void {
 		logInfo('GROUP_WRAPPER_STARTED fired.');
 	});
 
-	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, async (...args: unknown[]) => {
+	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, (...args: unknown[]) => {
 		logInfo('WORLDINFO_ENTRIES_LOADED fired.');
+		const worldInfo = args[0] as { charLore?: CharLoreSetting[] } | undefined;
+		if (worldInfo) {
+			setWorldInfoRef(worldInfo);
+		}
 	});
 
 	eventSource.on(eventTypes.WORLDINFO_SCAN_DONE, () => {
 		logInfo('WORLDINFO_SCAN_DONE fired.');
 	});
 
-	eventSource.on(eventTypes.GENERATION_STARTED, async () => {
+	eventSource.on(eventTypes.GENERATION_STARTED, () => {
 		logInfo('GENERATION_STARTED fired.');
 		const ctx = getRuntimeContext();
 		if (!ctx.groupId) {
 			logInfo('GENERATION_STARTED: non-group chat.');
-			await initWorldInfoModule();
 			const currentChar = getCurrentCharacter(ctx);
 			if (currentChar) {
 				const narratorState = getNarratorState(currentChar);
 				if (narratorState?.enabled) {
 					const narratorAvatar = currentChar.avatar;
 					logInfo('GENERATION_STARTED: saving narrator lorebooks.');
-					await saveNarratorLorebooks(ctx, narratorAvatar);
+					saveNarratorLorebooks(ctx, narratorAvatar);
 					logInfo('GENERATION_STARTED: injecting group lorebooks.');
-					await injectGroupLorebooks(ctx, narratorAvatar);
+					injectGroupLorebooks(ctx, narratorAvatar);
 				}
 			}
 		} else {
@@ -1736,11 +1695,10 @@ function registerEventHandlers(): void {
 		logInfo('GENERATE_AFTER_COMBINE_PROMPTS fired.');
 	});
 
-	eventSource.on(eventTypes.GENERATE_AFTER_DATA, async () => {
+	eventSource.on(eventTypes.GENERATE_AFTER_DATA, () => {
 		logInfo('GENERATE_AFTER_DATA fired.');
 		const ctx = getRuntimeContext();
 		
-		// Determine narrator avatar from currentSpeakerId (group chat) or current character (non-group)
 		let narratorAvatar: string | undefined;
 		
 		if (currentSpeakerId !== undefined && ctx.groupId) {
@@ -1757,9 +1715,8 @@ function registerEventHandlers(): void {
 		}
 		
 		if (narratorAvatar) {
-			await initWorldInfoModule();
 			logInfo('GENERATE_AFTER_DATA: restoring narrator lorebooks.');
-			await restoreNarratorLorebooks(ctx, narratorAvatar);
+			restoreNarratorLorebooks(ctx, narratorAvatar);
 		} else {
 			logInfo('GENERATE_AFTER_DATA: no narrator avatar identified, skipping restore.');
 		}
@@ -1947,12 +1904,6 @@ async function bootstrap(): Promise<void> {
 
 	bootstrapped = true;
 	logInfo('runtime hooks detected; initializing UI, prompt pipeline, and slash command.');
-	
-	try {
-		await initWorldInfoModule();
-	} catch (error) {
-		logError('failed to initialize world_info module.', error);
-	}
 	
 	injectGlobalSettings();
 	registerEventHandlers();
