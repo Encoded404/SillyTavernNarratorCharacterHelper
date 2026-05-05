@@ -264,7 +264,8 @@ async function initWorldInfoModule(): Promise<void> {
 	if (worldInfoModule !== null) return;
 	try {
 		// @ts-ignore - Runtime module, not available at build time
-		const module = await import('./scripts/world-info.js');
+		const baseUrl = window.location.origin;
+		const module = await import(`${baseUrl}/scripts/world-info.js`);
 		worldInfoModule = module.world_info as { charLore?: CharLoreSetting[] } | null;
 		logInfo('initWorldInfoModule: Successfully loaded world_info module.');
 	} catch (e) {
