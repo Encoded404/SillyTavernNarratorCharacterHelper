@@ -911,11 +911,16 @@ async function saveNarratorLorebooks(context: NarratorRuntimeContext): Promise<v
 	if (worldInfo?.charLore) {
 		const existing = worldInfo.charLore.find((e) => e.name === charLoreKey);
 		if (existing) {
+            logInfo(`saveNarratorLorebooks: existing lore setting for "${charLoreKey}": ${JSON.stringify(existing)}`);
 			originalNarratorLorebooks = { ...existing, extraBooks: existing.extraBooks ? [...existing.extraBooks] : undefined };
 			logInfo(`saveNarratorLorebooks: saved original lorebooks for "${charLoreKey}": ${JSON.stringify(originalNarratorLorebooks)}`);
 			return;
 		}
 	}
+    else
+    {
+        logInfo('saveNarratorLorebooks: worldInfo.charLore not found.');
+    }
 
 	originalNarratorLorebooks = { name: charLoreKey, extraBooks: [] };
 	logInfo(`saveNarratorLorebooks: no existing lorebooks for "${charLoreKey}", initialized empty.`);
