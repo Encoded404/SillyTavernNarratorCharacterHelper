@@ -258,42 +258,23 @@ let narratorModalRoot: HTMLElement | null = null;
 let capturedModalValues: CapturedModalValues | null = null;
 let originalNarratorLorebooks: CharLoreSetting | null = null;
 let currentSpeakerId: number | undefined = undefined;
+let worldInfoModule: { charLore?: CharLoreSetting[] } | null = null;
 
-function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
-	const sillyTavern = (globalThis as { SillyTavern?: Record<string, unknown> }).SillyTavern;
-	if (sillyTavern) {
-		const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
-		if (worldInfo && !(worldInfo instanceof HTMLElement) && worldInfo.charLore) {
-			return worldInfo;
-		}
-        else
-        {
-            if(sillyTavern.world_info && typeof sillyTavern.world_info === 'object' && !Array.isArray(sillyTavern.world_info))
-            {
-                logWarn('getWorldInfo: SillyTavern global found but world_info is missing charLore or is an unexpected type. here is world_info:', sillyTavern.world_info);
-            }
-            else
-            {
-                logWarn('getWorldInfo: SillyTavern global found but world_info is missing. here is the global object:', sillyTavern);
-            }
-        }
+async function initWorldInfoModule(): Promise<void> {
+	if (worldInfoModule !== null) return;
+	try {
+		// @ts-ignore - Runtime module, not available at build time
+		const module = await import('/scripts/world-info.js');
+		worldInfoModule = module.world_info as { charLore?: CharLoreSetting[] } | null;
+		logInfo('initWorldInfoModule: Successfully loaded world_info module.');
+	} catch (e) {
+		logError('initWorldInfoModule: Failed to load world-info module', e);
+		worldInfoModule = null;
 	}
-    else
-    {
-        logWarn('getWorldInfo: SillyTavern global not found.');
-    }
+}
 
-	const selectElement = document.getElementById('world_info') as HTMLSelectElement & { charLore?: CharLoreSetting[] } | null;
-	if (selectElement?.charLore) {
-		return { charLore: selectElement.charLore };
-	}
-    else
-    {
-        logWarn('getWorldInfo: #world_info element not found or missing charLore property. here is the element if it exists:', selectElement);
-    }
-
-    logWarn('getWorldInfo: could not retrieve world info from global or DOM.');
-	return undefined;
+function getWorldInfo(): { charLore?: CharLoreSetting[] } | null {
+	return worldInfoModule;
 }
 
 function getCharLoreKey(avatar: string): string {
@@ -1978,6 +1959,13 @@ async function bootstrap(): Promise<void> {
 
 	bootstrapped = true;
 	logInfo('runtime hooks detected; initializing UI, prompt pipeline, and slash command.');
+	
+	try {
+		await initWorldInfoModule();
+	} catch (error) {
+		logError('failed to initialize world_info module.', error);
+	}
+	
 	injectGlobalSettings();
 	registerEventHandlers();
 	try {
