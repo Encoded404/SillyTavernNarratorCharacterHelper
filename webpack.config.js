@@ -4,9 +4,6 @@ import TerserPlugin from 'terser-webpack-plugin';
 
 const __dirname = import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
 
-// Path to SillyTavern's public/scripts directory for module resolution
-const sillyTavernScriptsPath = path.resolve(__dirname, '../SillyTavern/public/scripts');
-
 export default {
 	entry: path.join(__dirname, 'src/index.ts'),
 	output: {
@@ -15,10 +12,6 @@ export default {
 	},
 	resolve: {
 		extensions: ['.ts', '.js'],
-		alias: {
-			'scripts': sillyTavernScriptsPath,
-		},
-		modules: ['node_modules', sillyTavernScriptsPath],
 	},
 	module: {
 		rules: [
@@ -50,10 +43,10 @@ export default {
 		],
 	},
 	externals: {
-		// These modules are provided by SillyTavern at runtime
-		'scripts/world-info.js': 'world-info',
-		'scripts/extensions.js': 'extensions',
-		'scripts/utils.js': 'utils',
-		'script.js': 'script',
+		// SillyTavern modules - resolved at runtime by the extension loader
+		'../../../../scripts/world-info.js': 'world-info',
+		'../../../../script.js': 'script',
+		'../../../../scripts/extensions.js': 'extensions',
+		'../../../../scripts/utils.js': 'utils',
 	},
 };

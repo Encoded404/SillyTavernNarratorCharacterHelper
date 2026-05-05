@@ -1,12 +1,12 @@
 import './style.css';
-// @ts-ignore - SillyTavern modules resolved at runtime
-import { world_info, charSetAuxWorlds } from 'scripts/world-info.js';
-// @ts-ignore - SillyTavern modules resolved at runtime
-import { saveSettingsDebounced, eventSource, event_types, this_chid, characters, selected_group, groups } from 'script.js';
-// @ts-ignore - SillyTavern modules resolved at runtime
-import { getContext } from 'scripts/extensions.js';
-// @ts-ignore - SillyTavern modules resolved at runtime
-import { getCharaFilename } from 'scripts/utils.js';
+// @ts-ignore - SillyTavern modules resolved at runtime via extension path mapping
+import { world_info, charSetAuxWorlds } from '../../../../scripts/world-info.js';
+// @ts-ignore
+import { saveSettingsDebounced, eventSource, event_types, this_chid, characters, selected_group, groups } from '../../../../script.js';
+// @ts-ignore
+import { getContext } from '../../../../scripts/extensions.js';
+// @ts-ignore
+import { getCharaFilename } from '../../../../scripts/utils.js';
 
 type CharLoreSetting = {
     name: string;
