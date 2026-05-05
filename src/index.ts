@@ -1916,11 +1916,13 @@ async function bootstrap(): Promise<void> {
 		logWarn('APP_READY hook was not registered because event source or event type map is unavailable.');
 	}
 
-	logInfo('Scheduling initial narrator button injection attempt in 1 second.');
+	logInfo('testing access to globalThis.world_info.chatLore:', (globalThis as unknown as { world_info?: { chatLore?: unknown } }).world_info?.chatLore);
+
+	logInfo('Scheduling initial narrator button injection attempt in 0.5 seconds.');
 	setTimeout(() => {
 		logInfo('Attempting initial narrator button injection.');
 		injectNarratorButtonIntoCharacterPanel();
-	}, 1000);
+	}, 500);
 }
 
 void bootstrap();
