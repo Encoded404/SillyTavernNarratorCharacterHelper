@@ -266,6 +266,10 @@ function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
 		if (worldInfo && !(worldInfo instanceof HTMLElement) && worldInfo.charLore) {
 			return worldInfo;
 		}
+        else
+        {
+            logWarn('getWorldInfo: SillyTavern global found but world_info is missing charLore or is an unexpected type. here is world_info:', worldInfo);
+        }
 	}
     else
     {
