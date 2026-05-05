@@ -258,15 +258,36 @@ let narratorModalRoot: HTMLElement | null = null;
 let capturedModalValues: CapturedModalValues | null = null;
 let originalNarratorLorebooks: string[] | null = null;
 let currentSpeakerId: number | undefined = undefined;
-let worldInfoRef: { charLore?: CharLoreSetting[] } | null = null;
-
-function setWorldInfoRef(worldInfo: { charLore?: CharLoreSetting[] }): void {
-	worldInfoRef = worldInfo;
-	logInfo('setWorldInfoRef: world_info reference captured.');
-}
 
 function getWorldInfo(): { charLore?: CharLoreSetting[] } | null {
-	return worldInfoRef;
+    // @ts-ignore - world_info is a global exported from world-info.js and imported by script.js
+    // It may be accessible through the module cache or global scope
+    const wi = (globalThis as Record<string, unknown>).world_info;
+    if (wi && typeof wi === 'object') {
+        return wi as { charLore?: CharLoreSetting[] };
+    }
+    return null;
+}
+
+function setCharLore(characterKey: string, books: string[], context: NarratorRuntimeContext): void {
+    const worldInfo = getWorldInfo();
+    if (!worldInfo) {
+        logWarn('setCharLore: world_info not accessible.');
+        return;
+    }
+    if (!worldInfo.charLore) {
+        worldInfo.charLore = [];
+    }
+    let narratorLoreSetting = worldInfo.charLore.find((e) => e.name === characterKey);
+    if (!narratorLoreSetting) {
+        narratorLoreSetting = { name: characterKey, extraBooks: [] };
+        worldInfo.charLore.push(narratorLoreSetting);
+    }
+    narratorLoreSetting.extraBooks = [...books];
+    logInfo(`setCharLore: Set "${characterKey}" extra books to: ${JSON.stringify(books)}`);
+    if (typeof context.saveSettingsDebounced === 'function') {
+        context.saveSettingsDebounced();
+    }
 }
 
 function getCharLoreKey(avatar: string): string {
@@ -864,23 +885,24 @@ function saveNarratorLorebooks(context: NarratorRuntimeContext, narratorAvatar: 
 	logInfo(`saveNarratorLorebooks: avatar="${narratorAvatar}", charLoreKey="${charLoreKey}"`);
 
 	if (!worldInfo) {
-		logInfo('saveNarratorLorebooks: world_info not found.');
+		logWarn('saveNarratorLorebooks: world_info not accessible.');
 		originalNarratorLorebooks = null;
 		return;
 	}
 
-	if (worldInfo.charLore) {
-		const existing = worldInfo.charLore.find((e) => e.name === charLoreKey);
-		if (existing) {
-			originalNarratorLorebooks = existing.extraBooks ? [...existing.extraBooks] : [];
-			logInfo(`saveNarratorLorebooks: saved original lorebooks for "${charLoreKey}": ${JSON.stringify(originalNarratorLorebooks)}`);
-		} else {
-			logInfo(`saveNarratorLorebooks: no existing entry for charLoreKey="${charLoreKey}". Available keys: ${worldInfo.charLore.map((e) => e.name).join(', ') || '(none)'}`);
-			originalNarratorLorebooks = [];
-		}
-	} else {
+	if (!worldInfo.charLore) {
+		logWarn('saveNarratorLorebooks: charLore not initialized in world_info.');
 		originalNarratorLorebooks = [];
-		logInfo(`saveNarratorLorebooks: charLore array not initialized, will create new entry for "${charLoreKey}".`);
+		return;
+	}
+
+	const existing = worldInfo.charLore.find((e) => e.name === charLoreKey);
+	if (existing) {
+		originalNarratorLorebooks = existing.extraBooks ? [...existing.extraBooks] : [];
+		logInfo(`saveNarratorLorebooks: saved original lorebooks for "${charLoreKey}": ${JSON.stringify(originalNarratorLorebooks)}`);
+	} else {
+		logInfo(`saveNarratorLorebooks: no existing entry for charLoreKey="${charLoreKey}". Available keys: ${worldInfo.charLore.map((e) => e.name).join(', ') || '(none)'}`);
+		originalNarratorLorebooks = [];
 	}
 }
 
@@ -895,7 +917,7 @@ function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAvatar: s
 
 	const worldInfo = getWorldInfo();
 	if (!worldInfo) {
-		logWarn('injectGroupLorebooks: world_info not found.');
+		logWarn('injectGroupLorebooks: world_info not accessible.');
 		return;
 	}
 
@@ -907,21 +929,7 @@ function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAvatar: s
 	const combinedArray = [...combinedLorebooks];
 	logInfo(`injectGroupLorebooks: combined lorebooks for "${charLoreKey}": ${JSON.stringify(combinedArray)}`);
 
-	if (!worldInfo.charLore) {
-		worldInfo.charLore = [];
-	}
-
-	let narratorLoreSetting = worldInfo.charLore.find((e) => e.name === charLoreKey);
-	if (!narratorLoreSetting) {
-		narratorLoreSetting = { name: charLoreKey, extraBooks: [] };
-		worldInfo.charLore.push(narratorLoreSetting);
-	}
-	narratorLoreSetting.extraBooks = combinedArray;
-
-	if (typeof context.saveSettingsDebounced === 'function') {
-		context.saveSettingsDebounced();
-		logInfo('injectGroupLorebooks: saveSettingsDebounced called.');
-	}
+	setCharLore(charLoreKey, combinedArray, context);
 }
 
 function restoreNarratorLorebooks(context: NarratorRuntimeContext, narratorAvatar: string): void {
@@ -933,28 +941,7 @@ function restoreNarratorLorebooks(context: NarratorRuntimeContext, narratorAvata
 	const charLoreKey = getCharLoreKey(narratorAvatar);
 	logInfo(`restoreNarratorLorebooks: restoring "${charLoreKey}" to: ${JSON.stringify(originalNarratorLorebooks)}`);
 
-	const worldInfo = getWorldInfo();
-	if (!worldInfo) {
-		logWarn('restoreNarratorLorebooks: world_info not found.');
-		originalNarratorLorebooks = null;
-		return;
-	}
-
-	if (!worldInfo.charLore) {
-		worldInfo.charLore = [];
-	}
-
-	let narratorLoreSetting = worldInfo.charLore.find((e) => e.name === charLoreKey);
-	if (!narratorLoreSetting) {
-		narratorLoreSetting = { name: charLoreKey, extraBooks: [] };
-		worldInfo.charLore.push(narratorLoreSetting);
-	}
-	narratorLoreSetting.extraBooks = [...(originalNarratorLorebooks ?? [])];
-
-	if (typeof context.saveSettingsDebounced === 'function') {
-		context.saveSettingsDebounced();
-		logInfo('restoreNarratorLorebooks: saveSettingsDebounced called.');
-	}
+	setCharLore(charLoreKey, originalNarratorLorebooks, context);
 
 	originalNarratorLorebooks = null;
 	logInfo('restoreNarratorLorebooks: restoration complete.');
@@ -1627,12 +1614,8 @@ function registerEventHandlers(): void {
 		logInfo('GROUP_WRAPPER_STARTED fired.');
 	});
 
-	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, (...args: unknown[]) => {
+	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, () => {
 		logInfo('WORLDINFO_ENTRIES_LOADED fired.');
-		const worldInfo = args[0] as { charLore?: CharLoreSetting[] } | undefined;
-		if (worldInfo) {
-			setWorldInfoRef(worldInfo);
-		}
 	});
 
 	eventSource.on(eventTypes.WORLDINFO_SCAN_DONE, () => {
