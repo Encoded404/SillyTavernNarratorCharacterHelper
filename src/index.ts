@@ -1717,6 +1717,36 @@ function registerEventHandlers(): void {
 		}
 	});
 
+	eventSource.on(eventTypes.CHAT_COMPLETION_PROMPT_READY, (...args: unknown[]) => {
+		logInfo('CHAT_COMPLETION_PROMPT_READY fired.');
+		const ctx = getRuntimeContext();
+		const worldInfo = getWorldInfo();
+		const narratorIndex = currentSpeakerId ?? getCurrentCharacterId(ctx);
+		if (narratorIndex !== undefined) {
+			const characters = getCharacters(ctx);
+			const narratorCharacter = characters[narratorIndex];
+			if (narratorCharacter) {
+				const avatar = narratorCharacter.avatar;
+				const charLore = worldInfo?.charLore?.find((e) => e.name === avatar);
+				logInfo(`CHAT_COMPLETION_PROMPT_READY: narrator "${avatar}" extraBooks=${JSON.stringify(charLore?.extraBooks ?? [])}`);
+			}
+		}
+	});
+
+	eventSource.on(eventTypes.WORLD_INFO_ACTIVATED, (...args: unknown[]) => {
+		const entries = args[0] as Array<{ world?: string; uid?: string | number; comment?: string }> | undefined;
+		logInfo(`WORLD_INFO_ACTIVATED fired with ${entries?.length ?? 0} entries.`);
+		if (entries && entries.length > 0) {
+			const worldNames = new Set<string>();
+			for (const entry of entries) {
+				if (entry.world) {
+					worldNames.add(entry.world);
+				}
+			}
+			logInfo(`WORLD_INFO_ACTIVATED: active lorebooks=${[...worldNames].join(', ') || '(none)'}`);
+		}
+	});
+
 	eventSource.on(eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, () => {
 		logInfo('GENERATE_AFTER_COMBINE_PROMPTS fired.');
 	});
