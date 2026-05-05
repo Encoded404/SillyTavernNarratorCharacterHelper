@@ -1744,7 +1744,7 @@ function registerEventHandlers(): void {
 		const payload = args[0] as { characterLore?: CharLoreSetting[] } | undefined;
 		if (payload?.characterLore) {
 			cachedWorldInfo = { charLore: payload.characterLore };
-			logInfo(`WORLDINFO_ENTRIES_LOADED: cached ${payload.characterLore.length} charLore entries from event payload.`);
+			logInfo(`WORLDINFO_ENTRIES_LOADED: cached ${payload.characterLore.length} charLore entries from event payload. here is full object:`, cachedWorldInfo);
 		}
 	});
 
