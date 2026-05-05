@@ -946,7 +946,7 @@ async function saveNarratorLorebooks(context: NarratorRuntimeContext): Promise<v
     }
 
 	if (worldInfo?.charLore) {
-        logInfo(`saveNarratorLorebooks: existing charLore entries: ${JSON.stringify(worldInfo.charLore)}`);
+        logInfo(`saveNarratorLorebooks: existing charLore entries:`, worldInfo.charLore);
 
 		const existing = worldInfo.charLore.find((e) => e.name === charLoreKey);
 		if (existing) {
