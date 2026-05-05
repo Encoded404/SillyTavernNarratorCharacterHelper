@@ -1,12 +1,12 @@
 import './style.css';
 // @ts-ignore - SillyTavern modules resolved at runtime via webpack externals
-import { world_info, charSetAuxWorlds } from '../../../../scripts/world-info.js';
+import { world_info, charSetAuxWorlds } from 'world-info.js';
 // @ts-ignore
-import { saveSettingsDebounced, eventSource, event_types, this_chid, characters, selected_group, groups } from '../../../../script.js';
+import { saveSettingsDebounced, eventSource, event_types, this_chid, characters, selected_group, groups } from 'script.js';
 // @ts-ignore
-import { getContext } from '../../../../scripts/extensions.js';
+import { getContext } from 'extensions.js';
 // @ts-ignore
-import { getCharaFilename } from '../../../../scripts/utils.js';
+import { getCharaFilename } from 'utils.js';
 
 type CharLoreSetting = {
     name: string;
