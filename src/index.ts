@@ -260,12 +260,21 @@ let originalNarratorLorebooks: CharLoreSetting | null = null;
 let currentSpeakerId: number | undefined = undefined;
 
 function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
-	const worldInfo = (globalThis as unknown as { world_info?: { charLore?: CharLoreSetting[] } }).world_info;
-	if (!worldInfo) {
-		logInfo('getWorldInfo: world_info not found on globalThis.');
-		return undefined;
+	const sillyTavern = (globalThis as unknown as { SillyTavern?: Record<string, unknown> }).SillyTavern;
+	if (sillyTavern) {
+		const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
+		if (worldInfo && !(worldInfo instanceof HTMLElement)) {
+			return worldInfo;
+		}
 	}
-	return worldInfo;
+
+	const selectElement = document.getElementById('world_info') as HTMLSelectElement & { charLore?: CharLoreSetting[] } | null;
+	if (selectElement?.charLore) {
+		return { charLore: selectElement.charLore };
+	}
+
+	logInfo('getWorldInfo: could not find world_info object.');
+	return undefined;
 }
 
 function getCharLoreKey(avatar: string): string {
@@ -907,20 +916,20 @@ async function saveNarratorLorebooks(context: NarratorRuntimeContext): Promise<v
 	const worldInfo = getWorldInfo();
 
 	logInfo(`saveNarratorLorebooks: avatar="${avatar}", charLoreKey="${charLoreKey}"`);
+	logInfo(`saveNarratorLorebooks: worldInfo found=${!!worldInfo}, charLore found=${!!worldInfo?.charLore}, charLore length=${worldInfo?.charLore?.length ?? 0}`);
+	if (worldInfo?.charLore) {
+		logInfo(`saveNarratorLorebooks: existing charLore entries: ${JSON.stringify(worldInfo.charLore)}`);
+	}
 
 	if (worldInfo?.charLore) {
 		const existing = worldInfo.charLore.find((e) => e.name === charLoreKey);
 		if (existing) {
-            logInfo(`saveNarratorLorebooks: existing lore setting for "${charLoreKey}": ${JSON.stringify(existing)}`);
 			originalNarratorLorebooks = { ...existing, extraBooks: existing.extraBooks ? [...existing.extraBooks] : undefined };
 			logInfo(`saveNarratorLorebooks: saved original lorebooks for "${charLoreKey}": ${JSON.stringify(originalNarratorLorebooks)}`);
 			return;
 		}
+		logInfo(`saveNarratorLorebooks: no existing entry for charLoreKey="${charLoreKey}" in charLore array.`);
 	}
-    else
-    {
-        logInfo('saveNarratorLorebooks: worldInfo.charLore not found.\nhere is the full worldInfo object for debugging:', worldInfo);
-    }
 
 	originalNarratorLorebooks = { name: charLoreKey, extraBooks: [] };
 	logInfo(`saveNarratorLorebooks: no existing lorebooks for "${charLoreKey}", initialized empty.`);
