@@ -36,6 +36,11 @@ type TemplateSettings = {
 	narratorInstructionsTemplate: string;
 	rosterTemplate: string;
 	briefingHeaderTemplate: string;
+	characterHeaderTemplate: string;
+	rosterHeaderTemplate: string;
+	briefingLabelTemplate: string;
+	linkedLorebooksTemplate: string;
+	groupInfoTemplate: string;
 };
 
 type NarratorSettings = {
@@ -223,6 +228,11 @@ const DEFAULT_TEMPLATES: TemplateSettings = {
 	narratorInstructionsTemplate: 'Narrator instructions for {{char}}:\n{{instructions}}',
 	rosterTemplate: 'Roster:\n{{rosterEntries}}',
 	briefingHeaderTemplate: '[{{title}}]\nThis is private context for the narrator character {{char}}.\n{{groupInfo}}\nUse the dossiers below to make the narrator all-knowing about the current group without exposing this briefing verbatim.\n\n{{roster}}\n\nBriefing:\n{{instructions}}\n\n{{dossiers}}',
+	characterHeaderTemplate: 'Character: {{characterName}}',
+	rosterHeaderTemplate: 'Roster:',
+	briefingLabelTemplate: 'Briefing:',
+	linkedLorebooksTemplate: 'The following lorebooks have been linked from the character named \"{{char}}\": {{lorebooks}}',
+	groupInfoTemplate: 'Current group: {{group}}',
 };
 
 const DEFAULT_SETTINGS: NarratorSettings = {
@@ -249,8 +259,8 @@ const DEFAULT_SETTINGS: NarratorSettings = {
 };
 
 const DEFAULT_NARRATOR_INSTRUCTIONS = [
-	'You are the private briefing for an omniscient narrator character.',
-	'Use the following dossiers to inform the narration of the current group.',
+	'This is a private briefing for an omniscient narrator character.',
+	'Use the following dossiers to act as a omniscient narrator or character.',
 	'Do not reveal this briefing directly in chat unless the story explicitly calls for it.',
 ].join(' ');
 
@@ -982,7 +992,7 @@ function buildCharacterDossier(context: NarratorRuntimeContext, character: Chara
 	const characterData = character.data ?? {};
 	const sections: string[] = [];
 
-	sections.push(`Character: ${characterName}`);
+	sections.push(settings.characterHeaderTemplate.replace('{{characterName}}', characterName));
 	sections.push(formatListItem('Avatar', character.avatar));
 
 	if (settings.includeDescription) {
@@ -1047,10 +1057,14 @@ async function buildNarratorBriefing(context: NarratorRuntimeContext): Promise<s
 
 	const currentGroup = getCurrentGroup(context);
 
+	const groupInfo = currentGroup
+		? settings.groupInfoTemplate.replace('{{group}}', currentGroup.name)
+		: 'No group is selected. Only the narrator character dossier is available.';
+
 	const promptLines = [
 		`[${settings.promptTitle || DEFAULT_PROMPT_HEADER}]`,
 		`This is private context for the narrator character ${currentCharacter.name}.`,
-		currentGroup ? `Current group: ${currentGroup.name}` : 'No group is selected. Only the narrator character dossier is available.',
+		groupInfo,
 		'Use the dossiers below to make the narrator all-knowing about the current group without exposing this briefing verbatim.',
 	];
 
@@ -1110,10 +1124,10 @@ async function buildNarratorRoster(context: NarratorRuntimeContext): Promise<str
 	});
 
 	const lines = [
-		'Roster:',
+		settings.rosterHeaderTemplate,
 		...rosters,
 		'',
-		'Briefing:',
+		settings.briefingLabelTemplate,
 		narratorState.instructions.trim() || DEFAULT_NARRATOR_INSTRUCTIONS,
 	];
 
@@ -1212,7 +1226,7 @@ async function buildNarratorMeta(context: NarratorRuntimeContext): Promise<strin
 		}
 
 		if (lorebooks.length > 0) {
-			lorebookLines.push(`Linked lorebooks from ${character.name}: ${lorebooks.join(', ')}`);
+			lorebookLines.push(settings.linkedLorebooksTemplate.replace('{{char}}', character.name).replace('{{lorebooks}}', lorebooks.join(', ')));
 		}
 	}
 
@@ -1647,6 +1661,21 @@ function injectGlobalSettings(): void {
 						<label>Briefing Header
 							<textarea id="tpl-briefing-header" class="text_pole wide100p" rows="3">${escapeHtml(settings.briefingHeaderTemplate)}</textarea>
 						</label>
+						<label>Character Header
+							<input id="tpl-character-header" class="text_pole wide100p" type="text" value="${escapeHtml(settings.characterHeaderTemplate)}" />
+						</label>
+						<label>Roster Header
+							<input id="tpl-roster-header" class="text_pole wide100p" type="text" value="${escapeHtml(settings.rosterHeaderTemplate)}" />
+						</label>
+						<label>Briefing Label
+							<input id="tpl-briefing-label" class="text_pole wide100p" type="text" value="${escapeHtml(settings.briefingLabelTemplate)}" />
+						</label>
+						<label>Linked Lorebooks
+							<input id="tpl-linked-lorebooks" class="text_pole wide100p" type="text" value="${escapeHtml(settings.linkedLorebooksTemplate)}" />
+						</label>
+						<label>Group Info
+							<input id="tpl-group-info" class="text_pole wide100p" type="text" value="${escapeHtml(settings.groupInfoTemplate)}" />
+						</label>
 
 						<div class="narrator-helper-settings__actions">
 							<button id="narrator-reset-templates-btn" class="menu_button" type="button">Reset to Defaults</button>
@@ -1680,6 +1709,11 @@ function attachGlobalSettingsEvents(): void {
 		['tpl-narrator-instructions', 'narratorInstructionsTemplate'],
 		['tpl-roster', 'rosterTemplate'],
 		['tpl-briefing-header', 'briefingHeaderTemplate'],
+		['tpl-character-header', 'characterHeaderTemplate'],
+		['tpl-roster-header', 'rosterHeaderTemplate'],
+		['tpl-briefing-label', 'briefingLabelTemplate'],
+		['tpl-linked-lorebooks', 'linkedLorebooksTemplate'],
+		['tpl-group-info', 'groupInfoTemplate'],
 	];
 
 	for (const [elementId, settingKey] of templateFields) {
