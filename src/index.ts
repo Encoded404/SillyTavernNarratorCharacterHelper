@@ -68,6 +68,7 @@ type NarratorSettings = {
 type CapturedModalValues = {
 	enabled: boolean;
 	instructions: string;
+	useDefaultInstructions: boolean;
 	promptPosition: number;
 	promptDepth: number;
 	includeDisabledMembers: boolean;
@@ -215,13 +216,13 @@ const DEFAULT_PROMPT_HEADER = 'Omniscient Narrator Briefing';
 
 const DEFAULT_TEMPLATES: TemplateSettings = {
 	characterDescriptionTemplate: 'About {{char}}: {{description}}',
-	personalityTemplate: '{{char}}\'s personality: {{personality}}',
+	personalityTemplate: '{{char}}\'s personality: --START OF PERSONALITY--{{personality}}--END OF PERSONALITY--\n',
 	scenarioTemplate: 'Current scenario: {{scenario}}',
 	firstMessageTemplate: '{{char}}\'s opening message: {{firstMessage}}',
-	exampleMessagesTemplate: 'Example conversations with {{char}}: {{exampleMessages}}',
-	creatorNotesTemplate: 'Notes from {{char}}\'s creator: {{creatorNotes}}',
-	systemPromptTemplate: 'System instructions for {{char}}: {{systemPrompt}}',
-	postHistoryInstructionsTemplate: 'Post-history notes for {{char}}: {{postHistoryInstructions}}',
+	exampleMessagesTemplate: 'Example conversations with {{char}}: --START OF EXAMPLE MESSAGES--\n{{exampleMessages}}--END OF EXAMPLE MESSAGES--',
+	creatorNotesTemplate: 'Notes from {{char}}\'s creator: --START OF CREATOR NOTES--\n{{creatorNotes}}--END OF CREATOR NOTES--',
+	systemPromptTemplate: 'System instructions for {{char}}: --START OF SYSTEM PROMPT--\n{{systemPrompt}}--END OF SYSTEM PROMPT--',
+	postHistoryInstructionsTemplate: 'Post-history notes for {{char}}: --START OF POST-HISTORY INSTRUCTIONS--\n{{postHistoryInstructions}}--END OF POST-HISTORY INSTRUCTIONS--',
 	tagsTemplate: '{{char}} is tagged with: {{tags}}',
 	characterBookTemplate: 'Character book entries for {{char}}:\n{{bookEntries}}',
 	worldInfoTemplate: 'World info "{{worldInfoName}}" ({{entryCount}} entries):\n{{worldEntries}}',
@@ -514,6 +515,7 @@ function buildNarratorModalHtml(
 ): string {
 	const isEnabled = narratorState?.enabled ?? false;
 	const instructions = narratorState?.instructions ?? '';
+	const displayInstructions = instructions || DEFAULT_NARRATOR_INSTRUCTIONS;
 
 	return `
 		<div class="narrator-helper-modal">
@@ -533,8 +535,17 @@ function buildNarratorModalHtml(
 						<div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
 					</div>
 					<div class="inline-drawer-content">
-						<p class="narrator-helper-modal__hint">Custom instructions for how this narrator should behave. Leave blank for defaults.</p>
-						<textarea id="narrator-instructions" class="text_pole wide100p" rows="5" placeholder="Optional per-character narrator instructions...">${escapeHtml(instructions)}</textarea>
+						<label class="checkbox_label">
+							<input id="narrator-use-default-instructions" type="checkbox" ${!instructions ? 'checked' : ''} />
+							<span>Use default instructions</span>
+						</label>
+						<p class="narrator-helper-modal__hint">Custom instructions for how this narrator should behave. Leave blank or enable "Use default instructions" for defaults.</p>
+						<textarea id="narrator-instructions" class="text_pole wide100p" rows="5" placeholder="Optional per-character narrator instructions..." ${!instructions ? 'disabled' : ''}>${escapeHtml(displayInstructions)}</textarea>
+						<div class="narrator-helper-modal__actions" style="margin-top: 10px;">
+							<button id="narrator-reset-instructions-btn" class="menu_button menu_button_icon" type="button">
+								<i class="fa-solid fa-rotate-left"></i><span>Reset to Default</span>
+							</button>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -628,6 +639,7 @@ function escapeHtml(text: string): string {
 function captureModalValues(): CapturedModalValues | null {
 	const enabledCheckbox = findModalElement<HTMLInputElement>('narrator-enabled', '.narrator-helper-modal #narrator-enabled');
 	const instructionsTextarea = findModalElement<HTMLTextAreaElement>('narrator-instructions', '.narrator-helper-modal #narrator-instructions');
+	const useDefaultInstructionsCheckbox = findModalElement<HTMLInputElement>('narrator-use-default-instructions', '.narrator-helper-modal #narrator-use-default-instructions');
 	const positionSelect = findModalElement<HTMLSelectElement>('prompt-position', '.narrator-helper-modal #prompt-position');
 	const depthInput = findModalElement<HTMLInputElement>('prompt-depth', '.narrator-helper-modal #prompt-depth');
 	const includeDisabled = findModalElement<HTMLInputElement>('include-disabled', '.narrator-helper-modal #include-disabled');
@@ -651,9 +663,13 @@ function captureModalValues(): CapturedModalValues | null {
 		return null;
 	}
 
+	const useDefault = useDefaultInstructionsCheckbox?.checked ?? false;
+	const instructions = useDefault ? '' : (instructionsTextarea?.value ?? '');
+
 	return {
 		enabled: enabledCheckbox?.checked ?? false,
-		instructions: instructionsTextarea?.value ?? '',
+		instructions: instructions,
+		useDefaultInstructions: useDefault,
 		promptPosition: Number(positionSelect?.value) || DEFAULT_SETTINGS.promptPosition,
 		promptDepth: Math.max(0, Number(depthInput?.value) || DEFAULT_SETTINGS.promptDepth),
 		includeDisabledMembers: includeDisabled?.checked ?? false,
@@ -699,6 +715,31 @@ function attachModalEvents(characterId: number): void {
 	positionSelect?.addEventListener('change', () => {
 		if (depthInput) {
 			depthInput.disabled = positionSelect.value !== '1';
+		}
+	});
+
+	const useDefaultCheckbox = findModalElement<HTMLInputElement>('narrator-use-default-instructions', '.narrator-helper-modal #narrator-use-default-instructions');
+	const instructionsTextarea = findModalElement<HTMLTextAreaElement>('narrator-instructions', '.narrator-helper-modal #narrator-instructions');
+	useDefaultCheckbox?.addEventListener('change', () => {
+		if (instructionsTextarea) {
+			instructionsTextarea.disabled = useDefaultCheckbox.checked;
+			if (useDefaultCheckbox.checked) {
+				instructionsTextarea.value = DEFAULT_NARRATOR_INSTRUCTIONS;
+			} else {
+				instructionsTextarea.value = '';
+				instructionsTextarea.focus();
+			}
+		}
+	});
+
+	const resetBtn = findModalElement('narrator-reset-instructions-btn', '.narrator-helper-modal #narrator-reset-instructions-btn');
+	resetBtn?.addEventListener('click', () => {
+		if (useDefaultCheckbox) {
+			useDefaultCheckbox.checked = true;
+		}
+		if (instructionsTextarea) {
+			instructionsTextarea.disabled = true;
+			instructionsTextarea.value = DEFAULT_NARRATOR_INSTRUCTIONS;
 		}
 	});
 }
