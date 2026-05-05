@@ -919,7 +919,7 @@ async function saveNarratorLorebooks(context: NarratorRuntimeContext): Promise<v
 	}
     else
     {
-        logInfo('saveNarratorLorebooks: worldInfo.charLore not found.');
+        logInfo('saveNarratorLorebooks: worldInfo.charLore not found.\nhere is the full worldInfo object for debugging:', worldInfo);
     }
 
 	originalNarratorLorebooks = { name: charLoreKey, extraBooks: [] };
