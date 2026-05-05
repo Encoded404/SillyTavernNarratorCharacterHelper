@@ -266,45 +266,6 @@ function getCharLoreKey(avatar: string): string {
 	return avatar.replace(/\.[^/.]+$/, '');
 }
 
-function findNarratorCharacterInGroup(context: NarratorRuntimeContext): number | undefined {
-	const group = getCurrentGroup(context);
-	if (!group) {
-		return undefined;
-	}
-
-	const characters = getCharacters(context);
-	const enabledNarrators: number[] = [];
-
-	for (const avatar of group.members) {
-		if (group.disabled_members.includes(avatar)) {
-			continue;
-		}
-
-		const character = characters.find((c) => c.avatar === avatar);
-		if (!character) {
-			continue;
-		}
-
-		const narratorState = getNarratorState(character);
-		if (narratorState?.enabled) {
-			const index = characters.indexOf(character);
-			enabledNarrators.push(index);
-		}
-	}
-
-	if (enabledNarrators.length === 0) {
-		logInfo('findNarratorCharacterInGroup: no enabled narrator found in group.');
-		return undefined;
-	}
-
-	if (enabledNarrators.length > 1) {
-		logWarn(`findNarratorCharacterInGroup: multiple enabled narrators found (${enabledNarrators.length}). Using first one.`);
-	}
-
-	logInfo(`findNarratorCharacterInGroup: found narrator at index ${enabledNarrators[0]}`);
-	return enabledNarrators[0];
-}
-
 function logInfo(message: string, data?: unknown): void {
 	if (data === undefined) {
 		console.info(`[Narrator Helper] ${message}`);
@@ -381,7 +342,6 @@ function injectNarratorButtonIntoCharacterPanel(): void {
 	const buttonRow = document.querySelector('.form_create_bottom_buttons_block.buttons_block');
 
 	if (!buttonRow) {
-		logInfo('Narrator button: character edit panel button row not found. The panel may not be open yet.');
 		return;
 	}
 
@@ -396,27 +356,21 @@ function injectNarratorButtonIntoCharacterPanel(): void {
 	btn.innerHTML = '<i class="fa-fw fa-solid fa-feather-pointed"></i><span>Narrator</span>';
 	btn.addEventListener('click', () => {
 		const context = getRuntimeContext();
-		logInfo(`Narrator button clicked. context.characterId=${JSON.stringify(context.characterId)}, context.this_chid=${JSON.stringify(context.this_chid)}`);
 
 		let charId = getCurrentCharacterId(context);
-		logInfo(`getCurrentCharacterId returned: ${charId}`);
 
 		if (charId === undefined) {
 			charId = getEditedCharacterIdFromPanel();
-			logInfo(`getEditedCharacterIdFromPanel returned: ${charId}`);
 		}
 
 		if (charId !== undefined) {
-			logInfo(`Opening narrator modal for character index ${charId}.`);
 			openNarratorModal(charId);
 		} else {
-			logWarn('Could not determine which character is being edited. characterId and this_chid are undefined, and no #create_button_id element found.');
 			toastrWarning('No character is currently selected. Open a character card first.');
 		}
 	});
 
 	buttonRow.appendChild(btn);
-	logInfo('Narrator button injected into character edit panel.');
 }
 
 function toastrWarning(message: string): void {
@@ -432,7 +386,6 @@ function getEditedCharacterIdFromPanel(): number | undefined {
 	if (createButtonId) {
 		const index = characters.findIndex((c) => c.avatar === createButtonId);
 		if (index !== -1) {
-			logInfo(`Found edited character by #create_button_id: "${createButtonId}" at index ${index}`);
 			return index;
 		}
 	}
@@ -443,7 +396,6 @@ function getEditedCharacterIdFromPanel(): number | undefined {
 		if (avatarName) {
 			const index = characters.findIndex((c) => c.avatar === avatarName || c.avatar === decodeURIComponent(avatarName));
 			if (index !== -1) {
-				logInfo(`Found edited character by #avatar_div img: "${avatarName}" at index ${index}`);
 				return index;
 			}
 		}
@@ -459,7 +411,6 @@ function getEditedCharacterIdFromPanel(): number | undefined {
 			.map(({ index }) => index);
 
 		if (matchingIndices.length === 1) {
-			logInfo(`Found edited character by name input: "${charName}" at index ${matchingIndices[0]}`);
 			return matchingIndices[0];
 		}
 
@@ -476,13 +427,10 @@ function getEditedCharacterIdFromPanel(): number | undefined {
 					const charTagsLower = charTags.map((t) => t.toLowerCase());
 					const commonTags = panelTags.filter((t) => charTagsLower.includes(t));
 					if (commonTags.length === panelTags.length && panelTags.length > 0) {
-						logInfo(`Found edited character by name+tags: "${charName}" with tags [${panelTags.join(', ')}] at index ${idx}`);
 						return idx;
 					}
 				}
 			}
-
-			logInfo(`Name "${charName}" matches ${matchingIndices.length} characters, could not disambiguate by tags.`);
 		}
 	}
 
@@ -690,7 +638,6 @@ function captureModalValues(): CapturedModalValues | null {
 	const maxWorldEntryLength = findModalElement<HTMLInputElement>('max-world-entry-length', '.narrator-helper-modal #max-world-entry-length');
 
 	if (!enabledCheckbox && !instructionsTextarea) {
-		logWarn('captureModalValues: no modal elements found.');
 		return null;
 	}
 
@@ -756,7 +703,6 @@ async function saveModalSettings(characterId: number): Promise<void> {
 
 	const values = capturedModalValues ?? captureModalValues();
 	if (!values) {
-		logWarn('saveModalSettings: no values captured.');
 		return;
 	}
 
@@ -793,15 +739,12 @@ function getGroups(context: NarratorRuntimeContext): GroupRecord[] {
 	return Array.isArray(context.groups) ? context.groups : [];
 }
 
-function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext, excludeAvatar?: string): Set<string> {
+	function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext, excludeAvatar?: string): Set<string> {
 	const lorebooks = new Set<string>();
 	const group = getCurrentGroup(context);
 	const characters = getCharacters(context);
 
-	logInfo(`getAllGroupMemberLorebookNames: groupId=${context.groupId}, groupMembers=${group?.members?.length ?? 0}, characters=${characters.length}, excludeAvatar=${excludeAvatar ?? '(none)'}`);
-
 	if (!group) {
-		logInfo('getAllGroupMemberLorebookNames: no group, returning empty.');
 		return lorebooks;
 	}
 
@@ -810,20 +753,15 @@ function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext, exclude
 		const isNarrator = avatar === excludeAvatar;
 		return !isDisabled || isNarrator;
 	});
-	logInfo(`getAllGroupMemberLorebookNames: active member avatars=${JSON.stringify(memberAvatars)}`);
 
 	for (const avatar of memberAvatars) {
 		const character = characters.find((c) => c.avatar === avatar);
 		if (!character) {
-			logInfo(`getAllGroupMemberLorebookNames: no character found for avatar "${avatar}"`);
 			continue;
 		}
 
 		if (character.data?.extensions?.world) {
 			lorebooks.add(character.data.extensions.world);
-			logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has primary lorebook "${character.data.extensions.world}"`);
-		} else {
-			logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has no primary lorebook.`);
 		}
 
 		const charLoreKey = getCharLoreKey(avatar);
@@ -832,15 +770,11 @@ function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext, exclude
 			for (const book of charExtra.extraBooks) {
 				if (book) {
 					lorebooks.add(book);
-					logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has extra lorebook "${book}"`);
 				}
 			}
-		} else {
-			logInfo(`getAllGroupMemberLorebookNames: "${character.name}" has no extra lorebooks (charLoreKey="${charLoreKey}").`);
 		}
 	}
 
-	logInfo(`getAllGroupMemberLorebookNames: total unique lorebooks=${[...lorebooks].join(', ') || '(none)'}`);
 	return lorebooks;
 }
 
@@ -851,13 +785,10 @@ function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext, exclude
  */
 function setNarratorLorebooks(characterKey: string, books: string[]): void {
 	charSetAuxWorlds(characterKey, books);
-	logInfo(`setNarratorLorebooks: Set "${characterKey}" extra books to: ${JSON.stringify(books)}`);
 }
 
 function saveNarratorLorebooks(narratorAvatar: string): void {
 	const charLoreKey = getCharLoreKey(narratorAvatar);
-
-	logInfo(`saveNarratorLorebooks: avatar="${narratorAvatar}", charLoreKey="${charLoreKey}"`);
 
 	if (!world_info.charLore) {
 		logWarn('saveNarratorLorebooks: charLore not initialized in world_info.');
@@ -868,9 +799,7 @@ function saveNarratorLorebooks(narratorAvatar: string): void {
 	const existing = world_info.charLore.find((e: CharLoreSetting) => e.name === charLoreKey);
 	if (existing) {
 		originalNarratorLorebooks = existing.extraBooks ? [...existing.extraBooks] : [];
-		logInfo(`saveNarratorLorebooks: saved original lorebooks for "${charLoreKey}": ${JSON.stringify(originalNarratorLorebooks)}`);
 	} else {
-		logInfo(`saveNarratorLorebooks: no existing entry for charLoreKey="${charLoreKey}". Available keys: ${world_info.charLore.map((e: CharLoreSetting) => e.name).join(', ') || '(none)'}`);
 		originalNarratorLorebooks = [];
 	}
 }
@@ -878,7 +807,6 @@ function saveNarratorLorebooks(narratorAvatar: string): void {
 function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAvatar: string): void {
 	const charLoreKey = getCharLoreKey(narratorAvatar);
 	const lorebookNames = getAllGroupMemberLorebookNames(context, narratorAvatar);
-	logInfo(`injectGroupLorebooks: found ${lorebookNames.size} lorebook names: ${[...lorebookNames].join(', ') || '(none)'}`);
 
 	if (lorebookNames.size === 0) {
 		return;
@@ -890,7 +818,6 @@ function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAvatar: s
 	}
 
 	const combinedArray = [...combinedLorebooks];
-	logInfo(`injectGroupLorebooks: combined lorebooks for "${charLoreKey}": ${JSON.stringify(combinedArray)}`);
 
 	setNarratorLorebooks(charLoreKey, combinedArray);
 	saveSettingsDebounced();
@@ -898,18 +825,15 @@ function injectGroupLorebooks(context: NarratorRuntimeContext, narratorAvatar: s
 
 function restoreNarratorLorebooks(narratorAvatar: string): void {
 	if (originalNarratorLorebooks === null) {
-		logInfo('restoreNarratorLorebooks: no saved lorebooks to restore.');
 		return;
 	}
 
 	const charLoreKey = getCharLoreKey(narratorAvatar);
-	logInfo(`restoreNarratorLorebooks: restoring "${charLoreKey}" to: ${JSON.stringify(originalNarratorLorebooks)}`);
 
 	setNarratorLorebooks(charLoreKey, originalNarratorLorebooks);
 	saveSettingsDebounced();
 
 	originalNarratorLorebooks = null;
-	logInfo('restoreNarratorLorebooks: restoration complete.');
 }
 
 function getCurrentCharacterId(context: NarratorRuntimeContext): number | undefined {
@@ -1522,11 +1446,8 @@ function registerEventHandlers(): void {
 	const eventTypes = context.eventTypes ?? context.event_types;
 
 	if (!eventSource || !eventTypes) {
-		logWarn('registerEventHandlers: eventSource or eventTypes unavailable.');
 		return;
 	}
-
-	logInfo('registerEventHandlers: available event types:', Object.keys(eventTypes));
 
 	const watchedEvents = [
 		eventTypes.APP_READY,
@@ -1541,8 +1462,6 @@ function registerEventHandlers(): void {
 		eventTypes.GROUP_MEMBER_DRAFTED,
 	].filter(Boolean) as string[];
 
-	logInfo(`registerEventHandlers: registered ${watchedEvents.length} watched events.`);
-
 	for (const eventName of watchedEvents) {
 		eventSource.on(eventName, () => {
 			scheduleRefresh();
@@ -1551,7 +1470,6 @@ function registerEventHandlers(): void {
 
 	eventSource.on(eventTypes.GROUP_MEMBER_DRAFTED, (...args: unknown[]) => {
 		const chId = args[0] as number;
-		logInfo(`GROUP_MEMBER_DRAFTED fired. chId=${chId}`);
 		currentSpeakerId = chId;
 
 		const ctx = getRuntimeContext();
@@ -1561,11 +1479,8 @@ function registerEventHandlers(): void {
 			if (speakerCharacter) {
 				const narratorState = getNarratorState(speakerCharacter);
 				if (narratorState?.enabled) {
-					logInfo('GROUP_MEMBER_DRAFTED: speaker is a narrator.');
 					const narratorAvatar = speakerCharacter.avatar;
-					logInfo('GROUP_MEMBER_DRAFTED: saving narrator lorebooks.');
 					saveNarratorLorebooks(narratorAvatar);
-					logInfo('GROUP_MEMBER_DRAFTED: injecting group lorebooks.');
 					injectGroupLorebooks(ctx, narratorAvatar);
 				}
 			}
@@ -1573,40 +1488,30 @@ function registerEventHandlers(): void {
 	});
 
 	eventSource.on(eventTypes.GROUP_WRAPPER_STARTED, () => {
-		logInfo('GROUP_WRAPPER_STARTED fired.');
 	});
 
 	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, () => {
-		logInfo('WORLDINFO_ENTRIES_LOADED fired.');
 	});
 
 	eventSource.on(eventTypes.WORLDINFO_SCAN_DONE, () => {
-		logInfo('WORLDINFO_SCAN_DONE fired.');
 	});
 
 	eventSource.on(eventTypes.GENERATION_STARTED, () => {
-		logInfo('GENERATION_STARTED fired.');
 		const ctx = getRuntimeContext();
 		if (!ctx.groupId) {
-			logInfo('GENERATION_STARTED: non-group chat.');
 			const currentChar = getCurrentCharacter(ctx);
 			if (currentChar) {
 				const narratorState = getNarratorState(currentChar);
 				if (narratorState?.enabled) {
 					const narratorAvatar = currentChar.avatar;
-					logInfo('GENERATION_STARTED: saving narrator lorebooks.');
 					saveNarratorLorebooks(narratorAvatar);
-					logInfo('GENERATION_STARTED: injecting group lorebooks.');
 					injectGroupLorebooks(ctx, narratorAvatar);
 				}
 			}
-		} else {
-			logInfo('GENERATION_STARTED: group chat, lorebooks already handled by GROUP_MEMBER_DRAFTED.');
 		}
 	});
 
 	eventSource.on(eventTypes.CHAT_COMPLETION_PROMPT_READY, () => {
-		logInfo('CHAT_COMPLETION_PROMPT_READY fired.');
 		const ctx = getRuntimeContext();
 		const narratorIndex = currentSpeakerId ?? getCurrentCharacterId(ctx);
 		if (narratorIndex !== undefined) {
@@ -1616,31 +1521,18 @@ function registerEventHandlers(): void {
 				const avatar = narratorCharacter.avatar;
 				const charLoreKey = getCharLoreKey(avatar);
 				const charLore = world_info.charLore?.find((e: CharLoreSetting) => e.name === charLoreKey);
-				logInfo(`CHAT_COMPLETION_PROMPT_READY: narrator avatar="${avatar}", charLoreKey="${charLoreKey}", extraBooks=${JSON.stringify(charLore?.extraBooks ?? [])}`);
 			}
 		}
 	});
 
 	eventSource.on(eventTypes.WORLD_INFO_ACTIVATED, (...args: unknown[]) => {
 		const entries = args[0] as Array<{ world?: string; uid?: string | number; comment?: string }> | undefined;
-		logInfo(`WORLD_INFO_ACTIVATED fired with ${entries?.length ?? 0} entries.`);
-		if (entries && entries.length > 0) {
-			const worldNames = new Set<string>();
-			for (const entry of entries) {
-				if (entry.world) {
-					worldNames.add(entry.world);
-				}
-			}
-			logInfo(`WORLD_INFO_ACTIVATED: active lorebooks=${[...worldNames].join(', ') || '(none)'}`);
-		}
 	});
 
 	eventSource.on(eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, () => {
-		logInfo('GENERATE_AFTER_COMBINE_PROMPTS fired.');
 	});
 
 	eventSource.on(eventTypes.GENERATE_AFTER_DATA, () => {
-		logInfo('GENERATE_AFTER_DATA fired.');
 		const ctx = getRuntimeContext();
 		
 		let narratorAvatar: string | undefined;
@@ -1659,7 +1551,6 @@ function registerEventHandlers(): void {
 		}
 		
 		if (narratorAvatar) {
-			logInfo('GENERATE_AFTER_DATA: restoring narrator lorebooks.');
 			restoreNarratorLorebooks(narratorAvatar);
 		} else {
 			logInfo('GENERATE_AFTER_DATA: no narrator avatar identified, skipping restore.');
@@ -1669,28 +1560,20 @@ function registerEventHandlers(): void {
 	});
 
 	const generateEvent = eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS;
-	logInfo(`registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS event type = "${generateEvent ?? '(undefined)'}"`);
 
 	if (generateEvent) {
 		eventSource.on(generateEvent, () => {
 			const ctx = getRuntimeContext();
-			logInfo(`GENERATE_BEFORE_COMBINE_PROMPTS fired: groupId=${ctx.groupId}, this_chid=${ctx.this_chid}, characterId=${ctx.characterId}`);
 		});
-		logInfo('registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS handler registered (no-op).');
-	} else {
-		logWarn('registerEventHandlers: GENERATE_BEFORE_COMBINE_PROMPTS event type not found in eventTypes!');
-		logInfo('registerEventHandlers: searching for generation-related events:', Object.keys(eventTypes).filter((k) => k.includes('GENERATE') || k.includes('COMBINE') || k.includes('PROMPT')));
 	}
 
 	eventSource.on(eventTypes.CHARACTER_EDITED, () => {
-		logInfo('CHARACTER_EDITED event received, attempting to inject narrator button.');
 		setTimeout(() => {
 			injectNarratorButtonIntoCharacterPanel();
 		}, 200);
 	});
 
 	eventSource.on(eventTypes.CHARACTER_PAGE_LOADED, () => {
-		logInfo('CHARACTER_PAGE_LOADED event received, attempting to inject narrator button.');
 		setTimeout(() => {
 			injectNarratorButtonIntoCharacterPanel();
 		}, 300);
@@ -1700,7 +1583,6 @@ function registerEventHandlers(): void {
 function injectGlobalSettings(): void {
 	const settingsContainer = document.getElementById('extensions_settings2') ?? document.getElementById('extensions_settings');
 	if (!settingsContainer) {
-		logWarn('Global settings: neither #extensions_settings2 nor #extensions_settings found.');
 		return;
 	}
 
@@ -1778,7 +1660,6 @@ function injectGlobalSettings(): void {
 	settingsContainer.appendChild(document.createRange().createContextualFragment(settingsHtml));
 
 	attachGlobalSettingsEvents();
-	logInfo('Global narrator settings injected into extensions panel.');
 }
 
 function attachGlobalSettingsEvents(): void {
@@ -1827,19 +1708,16 @@ function attachGlobalSettingsEvents(): void {
 
 async function bootstrap(): Promise<void> {
 	if (bootstrapped) {
-		logInfo('bootstrap skipped because the extension is already initialized.');
 		return;
 	}
 
-	logInfo('bootstrap started.');
 	const context = getRuntimeContext();
 	const missingPieces = describeMissingRuntimePieces(context);
 	if (missingPieces.length) {
-		logWarn('runtime context is missing pieces that the extension can use later:', missingPieces);
+		logWarn('runtime context is missing pieces:', missingPieces);
 	}
 
 	if (!context.SlashCommandParser || !context.SlashCommand || !context.setExtensionPrompt) {
-		logWarn('waiting for SillyTavern runtime hooks before finishing initialization.');
 		window.setTimeout(() => {
 			void bootstrap();
 		}, 500);
@@ -1847,20 +1725,18 @@ async function bootstrap(): Promise<void> {
 	}
 
 	bootstrapped = true;
-	logInfo('runtime hooks detected; initializing UI, prompt pipeline, and slash command.');
 	
 	injectGlobalSettings();
 	registerEventHandlers();
 	try {
 		await registerSlashCommand();
-		logInfo('STscript command registered: /narrator (available in the slash-command parser / prompt tools).');
 	} catch (error) {
 		logError('failed to register slash command.', error);
 	}
 
 	try {
 		await syncNarratorPrompt();
-		logInfo('Initial narrator prompts synced.');
+		logInfo('Narrator prompt synced successfully.');
 	} catch (error) {
 		logError('failed to sync narrator prompt during bootstrap.', error);
 	}
@@ -1868,18 +1744,13 @@ async function bootstrap(): Promise<void> {
 	const appReadyEvent = context.eventTypes?.APP_READY ?? context.event_types?.APP_READY;
 	if (appReadyEvent && context.eventSource) {
 		context.eventSource.on(appReadyEvent, () => {
-			logInfo('APP_READY received; injecting narrator button and settings.');
 			injectNarratorButtonIntoCharacterPanel();
 			injectGlobalSettings();
 			void syncNarratorPrompt().catch((error) => logError('failed to sync narrator prompts after APP_READY.', error));
 		});
-	} else {
-		logWarn('APP_READY hook was not registered because event source or event type map is unavailable.');
 	}
 
-	logInfo('Scheduling initial narrator button injection attempt in 1 second.');
 	setTimeout(() => {
-		logInfo('Attempting initial narrator button injection.');
 		injectNarratorButtonIntoCharacterPanel();
 	}, 1000);
 }
