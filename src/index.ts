@@ -257,7 +257,7 @@ let narratorModalOpen = false;
 let narratorModalRoot: HTMLElement | null = null;
 let capturedModalValues: CapturedModalValues | null = null;
 let originalNarratorLorebooks: CharLoreSetting | null = null;
-let generationInProgress = false;
+let currentSpeakerId: number | undefined = undefined;
 
 function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
 	const sillyTavern = (globalThis as unknown as { SillyTavern?: Record<string, unknown> }).SillyTavern;
@@ -267,6 +267,45 @@ function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
 
 	const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
 	return worldInfo;
+}
+
+function findNarratorCharacterInGroup(context: NarratorRuntimeContext): number | undefined {
+	const group = getCurrentGroup(context);
+	if (!group) {
+		return undefined;
+	}
+
+	const characters = getCharacters(context);
+	const enabledNarrators: number[] = [];
+
+	for (const avatar of group.members) {
+		if (group.disabled_members.includes(avatar)) {
+			continue;
+		}
+
+		const character = characters.find((c) => c.avatar === avatar);
+		if (!character) {
+			continue;
+		}
+
+		const narratorState = getNarratorState(character);
+		if (narratorState?.enabled) {
+			const index = characters.indexOf(character);
+			enabledNarrators.push(index);
+		}
+	}
+
+	if (enabledNarrators.length === 0) {
+		logInfo('findNarratorCharacterInGroup: no enabled narrator found in group.');
+		return undefined;
+	}
+
+	if (enabledNarrators.length > 1) {
+		logWarn(`findNarratorCharacterInGroup: multiple enabled narrators found (${enabledNarrators.length}). Using first one.`);
+	}
+
+	logInfo(`findNarratorCharacterInGroup: found narrator at index ${enabledNarrators[0]}`);
+	return enabledNarrators[0];
 }
 
 function logInfo(message: string, data?: unknown): void {
@@ -809,19 +848,52 @@ function getGroups(context: NarratorRuntimeContext): GroupRecord[] {
 	}
 
 async function saveNarratorLorebooks(context: NarratorRuntimeContext): Promise<void> {
-	const currentCharacter = getCurrentCharacter(context);
-	if (!currentCharacter) {
-		logInfo('saveNarratorLorebooks: no current character.');
+	let narratorCharacterIndex: number | undefined;
+
+	if (context.groupId && currentSpeakerId !== undefined) {
+		const characters = getCharacters(context);
+		const speakerCharacter = characters[currentSpeakerId];
+		if (speakerCharacter) {
+			const narratorState = getNarratorState(speakerCharacter);
+			if (narratorState?.enabled) {
+				narratorCharacterIndex = currentSpeakerId;
+				logInfo(`saveNarratorLorebooks: current speaker (chId=${currentSpeakerId}) is a narrator.`);
+			} else {
+				logInfo(`saveNarratorLorebooks: current speaker (chId=${currentSpeakerId}) is not a narrator, skipping.`);
+				return;
+			}
+		}
+	}
+
+	if (narratorCharacterIndex === undefined) {
+		const currentCharacter = getCurrentCharacter(context);
+		if (!currentCharacter) {
+			logInfo('saveNarratorLorebooks: no current character.');
+			return;
+		}
+
+		const narratorState = getNarratorState(currentCharacter);
+		if (!narratorState?.enabled) {
+			logInfo('saveNarratorLorebooks: narrator not enabled for current character.');
+			return;
+		}
+
+		narratorCharacterIndex = getCurrentCharacterId(context) as number | undefined;
+	}
+
+	if (narratorCharacterIndex === undefined) {
+		logInfo('saveNarratorLorebooks: could not determine narrator character index.');
 		return;
 	}
 
-	const narratorState = getNarratorState(currentCharacter);
-	if (!narratorState?.enabled) {
-		logInfo('saveNarratorLorebooks: narrator not enabled for current character.');
+	const characters = getCharacters(context);
+	const narratorCharacter = characters[narratorCharacterIndex];
+	if (!narratorCharacter) {
+		logInfo('saveNarratorLorebooks: narrator character not found at index.', narratorCharacterIndex);
 		return;
 	}
 
-	const avatar = currentCharacter.avatar;
+	const avatar = narratorCharacter.avatar;
 	const worldInfo = getWorldInfo();
 
 	if (worldInfo?.charLore) {
@@ -845,13 +917,37 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext): Promise<vo
 		return;
 	}
 
-	const currentCharacter = getCurrentCharacter(context);
-	if (!currentCharacter) {
-		logWarn('injectGroupLorebooks: no current character.');
+	let narratorIndex: number | undefined;
+
+	if (context.groupId && currentSpeakerId !== undefined) {
+		const characters = getCharacters(context);
+		const speakerCharacter = characters[currentSpeakerId];
+		if (speakerCharacter) {
+			const narratorState = getNarratorState(speakerCharacter);
+			if (narratorState?.enabled) {
+				narratorIndex = currentSpeakerId;
+				logInfo(`injectGroupLorebooks: current speaker (chId=${currentSpeakerId}) is a narrator.`);
+			}
+		}
+	}
+
+	if (narratorIndex === undefined) {
+		narratorIndex = getCurrentCharacterId(context) as number | undefined;
+	}
+
+	if (narratorIndex === undefined) {
+		logWarn('injectGroupLorebooks: no narrator character identified.');
 		return;
 	}
 
-	const avatar = currentCharacter.avatar;
+	const characters = getCharacters(context);
+	const narratorCharacter = characters[narratorIndex];
+	if (!narratorCharacter) {
+		logWarn('injectGroupLorebooks: narrator character not found at index.', narratorIndex);
+		return;
+	}
+
+	const avatar = narratorCharacter.avatar;
 	const worldInfo = getWorldInfo();
 
 	if (!worldInfo) {
@@ -1566,8 +1662,10 @@ function registerEventHandlers(): void {
 		});
 	}
 
-	eventSource.on(eventTypes.GROUP_MEMBER_DRAFTED, () => {
-		logInfo('GROUP_MEMBER_DRAFTED fired.');
+	eventSource.on(eventTypes.GROUP_MEMBER_DRAFTED, (...args: unknown[]) => {
+		const chId = args[0] as number;
+		logInfo(`GROUP_MEMBER_DRAFTED fired. chId=${chId}`);
+		currentSpeakerId = chId;
 	});
 
 	eventSource.on(eventTypes.GROUP_WRAPPER_STARTED, () => {
@@ -1585,11 +1683,6 @@ function registerEventHandlers(): void {
 	eventSource.on(eventTypes.GENERATION_STARTED, async () => {
 		logInfo('GENERATION_STARTED fired.');
 		const ctx = getRuntimeContext();
-		if (generationInProgress) {
-			logInfo('GENERATION_STARTED: generation already in progress, skipping.');
-			return;
-		}
-		generationInProgress = true;
 		await saveNarratorLorebooks(ctx);
 		await injectGroupLorebooks(ctx);
 	});
@@ -1601,10 +1694,8 @@ function registerEventHandlers(): void {
 	eventSource.on(eventTypes.GENERATE_AFTER_DATA, async () => {
 		logInfo('GENERATE_AFTER_DATA fired.');
 		const ctx = getRuntimeContext();
-		if (generationInProgress) {
-			await restoreNarratorLorebooks(ctx);
-			generationInProgress = false;
-		}
+		await restoreNarratorLorebooks(ctx);
+		currentSpeakerId = undefined;
 	});
 
 	const generateEvent = eventTypes.GENERATE_BEFORE_COMBINE_PROMPTS;
