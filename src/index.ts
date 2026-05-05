@@ -954,7 +954,7 @@ async function saveNarratorLorebooks(context: NarratorRuntimeContext): Promise<v
 			logInfo(`saveNarratorLorebooks: saved original lorebooks for "${charLoreKey}": ${JSON.stringify(originalNarratorLorebooks)}`);
 			return;
 		}
-		logInfo(`saveNarratorLorebooks: no existing entry for charLoreKey="${charLoreKey}" in charLore array.`);
+		logInfo(`saveNarratorLorebooks: no existing entry for charLoreKey="${charLoreKey}" in charLore array. here is a list of all available charLore keys: ${worldInfo.charLore.map((e) => e.name).join(', ')}`);
 	}
 
 	originalNarratorLorebooks = { name: charLoreKey, extraBooks: [] };
