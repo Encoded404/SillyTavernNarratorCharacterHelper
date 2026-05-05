@@ -264,16 +264,32 @@ function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
 	if (sillyTavern) {
 		const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
 		if (worldInfo && !(worldInfo instanceof HTMLElement)) {
+            logInfo('getWorldInfo: found world_info on SillyTavern global object.', worldInfo);
 			return worldInfo;
 		}
 	}
 
 	const selectElement = document.getElementById('world_info') as HTMLSelectElement & { charLore?: CharLoreSetting[] } | null;
 	if (selectElement?.charLore) {
+        logInfo('getWorldInfo: found world_info on #world_info select element.', { charLore: selectElement.charLore });
 		return { charLore: selectElement.charLore };
 	}
 
-	logInfo('getWorldInfo: could not find world_info object.');
+    const globalWorldInfo = (globalThis as unknown as { world_info?: { charLore?: CharLoreSetting[] } }).world_info;
+    if (globalWorldInfo) {
+        // this has the possibility of being a selectobject. so if globalWorldInfo.charLore is an array, we are good. if it's an HTMLSelectElement, we want to check if it has a charLore property and use that if available.
+        if (Array.isArray(globalWorldInfo.charLore)) {
+            logInfo('getWorldInfo: found world_info on global object.', { charLore: globalWorldInfo.charLore });
+            return { charLore: globalWorldInfo.charLore };
+        }
+
+        if (globalWorldInfo instanceof HTMLSelectElement && globalWorldInfo.charLore) {
+            logInfo('getWorldInfo: found world_info on global object as HTMLSelectElement with charLore property.', { charLore: globalWorldInfo.charLore });
+            return { charLore: globalWorldInfo.charLore };
+        }
+    }
+
+	logWarn('getWorldInfo: could not find world_info object.');
 	return undefined;
 }
 
@@ -917,11 +933,15 @@ async function saveNarratorLorebooks(context: NarratorRuntimeContext): Promise<v
 
 	logInfo(`saveNarratorLorebooks: avatar="${avatar}", charLoreKey="${charLoreKey}"`);
 	logInfo(`saveNarratorLorebooks: worldInfo found=${!!worldInfo}, charLore found=${!!worldInfo?.charLore}, charLore length=${worldInfo?.charLore?.length ?? 0}`);
-	if (worldInfo?.charLore) {
-		logInfo(`saveNarratorLorebooks: existing charLore entries: ${JSON.stringify(worldInfo.charLore)}`);
-	}
+    
+    if (!worldInfo) {
+        logInfo('saveNarratorLorebooks: world_info not found.');
+        return;
+    }
 
 	if (worldInfo?.charLore) {
+        logInfo(`saveNarratorLorebooks: existing charLore entries: ${JSON.stringify(worldInfo.charLore)}`);
+
 		const existing = worldInfo.charLore.find((e) => e.name === charLoreKey);
 		if (existing) {
 			originalNarratorLorebooks = { ...existing, extraBooks: existing.extraBooks ? [...existing.extraBooks] : undefined };
