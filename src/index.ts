@@ -1741,10 +1741,10 @@ function registerEventHandlers(): void {
 
 	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, async (...args: unknown[]) => {
 		logInfo('WORLDINFO_ENTRIES_LOADED fired.');
-		const payload = args[0] as { charLore?: CharLoreSetting[] } | undefined;
-		if (payload?.charLore) {
-			cachedWorldInfo = { charLore: payload.charLore };
-			logInfo(`WORLDINFO_ENTRIES_LOADED: cached ${payload.charLore.length} charLore entries from event payload. here is full object:`, cachedWorldInfo);
+		const payload = args[0] as { characterLore?: CharLoreSetting[] } | undefined;
+		if (payload?.characterLore) {
+			cachedWorldInfo = { charLore: payload.characterLore };
+			logInfo(`WORLDINFO_ENTRIES_LOADED: cached ${payload.characterLore.length} charLore entries from event payload. here is full object:`, cachedWorldInfo);
 		}
 	});
 
