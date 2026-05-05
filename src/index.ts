@@ -265,6 +265,10 @@ function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
 		logInfo(`getWorldInfo: returning cached charLore with ${cachedWorldInfo.charLore.length} entries.`);
 		return cachedWorldInfo;
 	}
+    else
+    {
+        logInfo('getWorldInfo: cached world info is missing or invalid.', { cachedWorldInfo });
+    }
 
     const sillyTavern = (globalThis as { SillyTavern?: Record<string, unknown> }).SillyTavern
     if (sillyTavern) {
@@ -286,6 +290,10 @@ function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
 		cachedWorldInfo = { charLore: selectElement.charLore };
 		return cachedWorldInfo;
 	}
+    else
+    {
+        logWarn('getWorldInfo: #world_info element found but charLore is missing or invalid.', { selectElement });
+    }
 
 	logInfo('getWorldInfo: could not find world_info.charLore.');
 	return undefined;
