@@ -260,12 +260,11 @@ let originalNarratorLorebooks: CharLoreSetting | null = null;
 let currentSpeakerId: number | undefined = undefined;
 
 function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
-	const sillyTavern = (globalThis as unknown as { SillyTavern?: Record<string, unknown> }).SillyTavern;
-	if (!sillyTavern) {
+	const worldInfo = (globalThis as unknown as { world_info?: { charLore?: CharLoreSetting[] } }).world_info;
+	if (!worldInfo) {
+		logInfo('getWorldInfo: world_info not found on globalThis.');
 		return undefined;
 	}
-
-	const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
 	return worldInfo;
 }
 
@@ -977,6 +976,7 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext): Promise<vo
 	}
 
 	logInfo(`injectGroupLorebooks: final extra books for "${avatar}": ${JSON.stringify(narratorLoreSetting.extraBooks)}`);
+	context.saveSettingsDebounced?.();
 }
 
 async function restoreNarratorLorebooks(context: NarratorRuntimeContext): Promise<void> {
@@ -1019,6 +1019,7 @@ async function restoreNarratorLorebooks(context: NarratorRuntimeContext): Promis
 	}
 
 	originalNarratorLorebooks = null;
+	context.saveSettingsDebounced?.();
 	logInfo('restoreNarratorLorebooks: restoration complete.');
 }
 
