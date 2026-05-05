@@ -258,44 +258,30 @@ let narratorModalRoot: HTMLElement | null = null;
 let capturedModalValues: CapturedModalValues | null = null;
 let originalNarratorLorebooks: CharLoreSetting | null = null;
 let currentSpeakerId: number | undefined = undefined;
-let cachedWorldInfo: { charLore?: CharLoreSetting[] } | undefined = undefined;
 
 function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
-	if (cachedWorldInfo?.charLore) {
-		logInfo(`getWorldInfo: returning cached charLore with ${cachedWorldInfo.charLore.length} entries. here is the full object:`, cachedWorldInfo);
-		return cachedWorldInfo;
+	const sillyTavern = (globalThis as { SillyTavern?: Record<string, unknown> }).SillyTavern;
+	if (sillyTavern) {
+		const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
+		if (worldInfo && !(worldInfo instanceof HTMLElement) && worldInfo.charLore) {
+			return worldInfo;
+		}
 	}
     else
     {
-        logInfo('getWorldInfo: cached world info is missing or invalid.', { cachedWorldInfo });
+        logWarn('getWorldInfo: SillyTavern global not found.');
     }
 
-    const sillyTavern = (globalThis as { SillyTavern?: Record<string, unknown> }).SillyTavern
-    if (sillyTavern) {
-        const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
-        if (worldInfo && !(worldInfo instanceof HTMLElement) && worldInfo.charLore) {
-            logInfo(`getWorldInfo: found charLore on SillyTavern.world_info with ${worldInfo.charLore.length} entries.`);
-            cachedWorldInfo = worldInfo;
-            return cachedWorldInfo;
-        }
-        else
-        {
-            logWarn('getWorldInfo: SillyTavern.world_info found but charLore is missing or invalid.', { worldInfo });
-        }
-    }
-    
 	const selectElement = document.getElementById('world_info') as HTMLSelectElement & { charLore?: CharLoreSetting[] } | null;
 	if (selectElement?.charLore) {
-		logInfo(`getWorldInfo: found charLore on DOM element with ${selectElement.charLore.length} entries.`);
-		cachedWorldInfo = { charLore: selectElement.charLore };
-		return cachedWorldInfo;
+		return { charLore: selectElement.charLore };
 	}
     else
     {
-        logWarn('getWorldInfo: #world_info element found but charLore is missing or invalid.', { selectElement });
+        logWarn('getWorldInfo: #world_info element not found or missing charLore property. here is the element if it exists:', selectElement);
     }
 
-	logInfo('getWorldInfo: could not find world_info.charLore.');
+    logWarn('getWorldInfo: could not retrieve world info from global or DOM.');
 	return undefined;
 }
 
@@ -1741,11 +1727,6 @@ function registerEventHandlers(): void {
 
 	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, async (...args: unknown[]) => {
 		logInfo('WORLDINFO_ENTRIES_LOADED fired.');
-		const payload = args[0] as { characterLore?: CharLoreSetting[] } | undefined;
-		if (payload?.characterLore) {
-			cachedWorldInfo = { charLore: payload.characterLore };
-			logInfo(`WORLDINFO_ENTRIES_LOADED: cached ${payload.characterLore.length} charLore entries from event payload. here is full object:`, cachedWorldInfo);
-		}
 	});
 
 	eventSource.on(eventTypes.WORLDINFO_SCAN_DONE, () => {
