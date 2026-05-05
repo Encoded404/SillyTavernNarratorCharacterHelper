@@ -795,12 +795,12 @@ function getGroups(context: NarratorRuntimeContext): GroupRecord[] {
 	return Array.isArray(context.groups) ? context.groups : [];
 }
 
-	function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext): Set<string> {
+	function getAllGroupMemberLorebookNames(context: NarratorRuntimeContext, excludeAvatar?: string): Set<string> {
 		const lorebooks = new Set<string>();
 		const group = getCurrentGroup(context);
 		const characters = getCharacters(context);
 
-		logInfo(`getAllGroupMemberLorebookNames: groupId=${context.groupId}, groupMembers=${group?.members?.length ?? 0}, characters=${characters.length}`);
+		logInfo(`getAllGroupMemberLorebookNames: groupId=${context.groupId}, groupMembers=${group?.members?.length ?? 0}, characters=${characters.length}, excludeAvatar=${excludeAvatar ?? '(none)'}`);
 
 		if (!group) {
 			logInfo('getAllGroupMemberLorebookNames: no group, returning empty.');
@@ -811,6 +811,11 @@ function getGroups(context: NarratorRuntimeContext): GroupRecord[] {
 		logInfo(`getAllGroupMemberLorebookNames: active member avatars=${JSON.stringify(memberAvatars)}`);
 
 		for (const avatar of memberAvatars) {
+			if (avatar === excludeAvatar) {
+				logInfo(`getAllGroupMemberLorebookNames: skipping narrator's own avatar "${avatar}"`);
+				continue;
+			}
+
 			const character = characters.find((c) => c.avatar === avatar);
 			if (!character) {
 				logInfo(`getAllGroupMemberLorebookNames: no character found for avatar "${avatar}"`);
@@ -909,14 +914,8 @@ async function saveNarratorLorebooks(context: NarratorRuntimeContext): Promise<v
 }
 
 async function injectGroupLorebooks(context: NarratorRuntimeContext): Promise<void> {
-	const lorebookNames = getAllGroupMemberLorebookNames(context);
-	logInfo(`injectGroupLorebooks: found ${lorebookNames.size} lorebook names: ${[...lorebookNames].join(', ') || '(none)'}`);
-
-	if (lorebookNames.size === 0) {
-		return;
-	}
-
 	let narratorIndex: number | undefined;
+	let narratorAvatar: string | undefined;
 
 	if (context.groupId && currentSpeakerId !== undefined) {
 		const characters = getCharacters(context);
@@ -925,6 +924,7 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext): Promise<vo
 			const narratorState = getNarratorState(speakerCharacter);
 			if (narratorState?.enabled) {
 				narratorIndex = currentSpeakerId;
+				narratorAvatar = speakerCharacter.avatar;
 				logInfo(`injectGroupLorebooks: current speaker (chId=${currentSpeakerId}) is a narrator.`);
 			}
 		}
@@ -932,10 +932,21 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext): Promise<vo
 
 	if (narratorIndex === undefined) {
 		narratorIndex = getCurrentCharacterId(context) as number | undefined;
+		if (narratorIndex !== undefined) {
+			const characters = getCharacters(context);
+			narratorAvatar = characters[narratorIndex]?.avatar;
+		}
 	}
 
-	if (narratorIndex === undefined) {
+	if (narratorIndex === undefined || !narratorAvatar) {
 		logWarn('injectGroupLorebooks: no narrator character identified.');
+		return;
+	}
+
+	const lorebookNames = getAllGroupMemberLorebookNames(context, narratorAvatar);
+	logInfo(`injectGroupLorebooks: found ${lorebookNames.size} lorebook names: ${[...lorebookNames].join(', ') || '(none)'}`);
+
+	if (lorebookNames.size === 0) {
 		return;
 	}
 
@@ -946,7 +957,6 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext): Promise<vo
 		return;
 	}
 
-	const avatar = narratorCharacter.avatar;
 	const worldInfo = getWorldInfo();
 
 	if (!worldInfo) {
@@ -958,9 +968,9 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext): Promise<vo
 		worldInfo.charLore = [];
 	}
 
-	let narratorLoreSetting = worldInfo.charLore.find((e) => e.name === avatar);
+	let narratorLoreSetting = worldInfo.charLore.find((e) => e.name === narratorAvatar);
 	if (!narratorLoreSetting) {
-		narratorLoreSetting = { name: avatar, extraBooks: [] };
+		narratorLoreSetting = { name: narratorAvatar, extraBooks: [] };
 		worldInfo.charLore.push(narratorLoreSetting);
 	}
 
@@ -975,7 +985,7 @@ async function injectGroupLorebooks(context: NarratorRuntimeContext): Promise<vo
 		}
 	}
 
-	logInfo(`injectGroupLorebooks: final extra books for "${avatar}": ${JSON.stringify(narratorLoreSetting.extraBooks)}`);
+	logInfo(`injectGroupLorebooks: final extra books for "${narratorAvatar}": ${JSON.stringify(narratorLoreSetting.extraBooks)}`);
 	context.saveSettingsDebounced?.();
 }
 
@@ -1663,10 +1673,24 @@ function registerEventHandlers(): void {
 		});
 	}
 
-	eventSource.on(eventTypes.GROUP_MEMBER_DRAFTED, (...args: unknown[]) => {
+	eventSource.on(eventTypes.GROUP_MEMBER_DRAFTED, async (...args: unknown[]) => {
 		const chId = args[0] as number;
 		logInfo(`GROUP_MEMBER_DRAFTED fired. chId=${chId}`);
 		currentSpeakerId = chId;
+
+		const ctx = getRuntimeContext();
+		if (ctx.groupId) {
+			const characters = getCharacters(ctx);
+			const speakerCharacter = characters[chId];
+			if (speakerCharacter) {
+				const narratorState = getNarratorState(speakerCharacter);
+				if (narratorState?.enabled) {
+					logInfo('GROUP_MEMBER_DRAFTED: speaker is a narrator, saving and injecting lorebooks.');
+					await saveNarratorLorebooks(ctx);
+					await injectGroupLorebooks(ctx);
+				}
+			}
+		}
 	});
 
 	eventSource.on(eventTypes.GROUP_WRAPPER_STARTED, () => {
@@ -1684,8 +1708,13 @@ function registerEventHandlers(): void {
 	eventSource.on(eventTypes.GENERATION_STARTED, async () => {
 		logInfo('GENERATION_STARTED fired.');
 		const ctx = getRuntimeContext();
-		await saveNarratorLorebooks(ctx);
-		await injectGroupLorebooks(ctx);
+		if (!ctx.groupId) {
+			logInfo('GENERATION_STARTED: non-group chat, saving and injecting lorebooks.');
+			await saveNarratorLorebooks(ctx);
+			await injectGroupLorebooks(ctx);
+		} else {
+			logInfo('GENERATION_STARTED: group chat, lorebooks already handled by GROUP_MEMBER_DRAFTED.');
+		}
 	});
 
 	eventSource.on(eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, () => {
