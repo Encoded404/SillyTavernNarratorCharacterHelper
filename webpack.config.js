@@ -42,12 +42,15 @@ export default {
 			}),
 		],
 	},
+	experiments: {
+		outputModule: true,
+	},
+	externalsType: 'module',
 	externals: {
 		// SillyTavern modules - resolved at runtime by the extension loader
-		// Format: 'import path': 'commonjs runtime path'
-		'../../../../scripts/world-info.js': 'commonjs ../../../../scripts/world-info.js',
-		'../../../../script.js': 'commonjs ../../../../script.js',
-		'../../../../scripts/extensions.js': 'commonjs ../../../../scripts/extensions.js',
-		'../../../../scripts/utils.js': 'commonjs ../../../../scripts/utils.js',
+		'../../../../scripts/world-info.js': '../../../../scripts/world-info.js',
+		'../../../../script.js': '../../../../script.js',
+		'../../../../scripts/extensions.js': '../../../../scripts/extensions.js',
+		'../../../../scripts/utils.js': '../../../../scripts/utils.js',
 	},
 };
