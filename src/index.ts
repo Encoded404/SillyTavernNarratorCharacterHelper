@@ -287,6 +287,8 @@ function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
             logInfo('getWorldInfo: found world_info on global object as HTMLSelectElement with charLore property.', { charLore: globalWorldInfo.charLore });
             return { charLore: globalWorldInfo.charLore };
         }
+
+        logWarn('getWorldInfo: found world_info on global object but it does not have a charLore property.', { worldInfo: globalWorldInfo });
     }
 
 	logWarn('getWorldInfo: could not find world_info object.');
