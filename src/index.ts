@@ -268,7 +268,7 @@ function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
 		}
         else
         {
-            if(sillyTavern.world_info)
+            if(sillyTavern.world_info && typeof sillyTavern.world_info === 'object' && !Array.isArray(sillyTavern.world_info))
             {
                 logWarn('getWorldInfo: SillyTavern global found but world_info is missing charLore or is an unexpected type. here is world_info:', sillyTavern.world_info);
             }
