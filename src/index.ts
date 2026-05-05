@@ -258,40 +258,32 @@ let narratorModalRoot: HTMLElement | null = null;
 let capturedModalValues: CapturedModalValues | null = null;
 let originalNarratorLorebooks: CharLoreSetting | null = null;
 let currentSpeakerId: number | undefined = undefined;
+let cachedWorldInfo: { charLore?: CharLoreSetting[] } | undefined = undefined;
 
 function getWorldInfo(): { charLore?: CharLoreSetting[] } | undefined {
-	const sillyTavern = (globalThis as unknown as { SillyTavern?: Record<string, unknown> }).SillyTavern;
-	if (sillyTavern) {
-		const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
-		if (worldInfo && !(worldInfo instanceof HTMLElement)) {
-            logInfo('getWorldInfo: found world_info on SillyTavern global object.', worldInfo);
-			return worldInfo;
-		}
+	if (cachedWorldInfo?.charLore) {
+		logInfo(`getWorldInfo: returning cached charLore with ${cachedWorldInfo.charLore.length} entries.`);
+		return cachedWorldInfo;
 	}
 
 	const selectElement = document.getElementById('world_info') as HTMLSelectElement & { charLore?: CharLoreSetting[] } | null;
 	if (selectElement?.charLore) {
-        logInfo('getWorldInfo: found world_info on #world_info select element.', { charLore: selectElement.charLore });
-		return { charLore: selectElement.charLore };
+		logInfo(`getWorldInfo: found charLore on DOM element with ${selectElement.charLore.length} entries.`);
+		cachedWorldInfo = { charLore: selectElement.charLore };
+		return cachedWorldInfo;
 	}
 
-    const globalWorldInfo = (globalThis as unknown as { world_info?: { charLore?: CharLoreSetting[] } }).world_info;
-    if (globalWorldInfo) {
-        // this has the possibility of being a selectobject. so if globalWorldInfo.charLore is an array, we are good. if it's an HTMLSelectElement, we want to check if it has a charLore property and use that if available.
-        if (Array.isArray(globalWorldInfo.charLore)) {
-            logInfo('getWorldInfo: found world_info on global object.', { charLore: globalWorldInfo.charLore });
-            return { charLore: globalWorldInfo.charLore };
-        }
+	const sillyTavern = (globalThis as unknown as { SillyTavern?: Record<string, unknown> }).SillyTavern;
+	if (sillyTavern) {
+		const worldInfo = sillyTavern.world_info as { charLore?: CharLoreSetting[] } | undefined;
+		if (worldInfo && !(worldInfo instanceof HTMLElement) && worldInfo.charLore) {
+			logInfo(`getWorldInfo: found charLore on SillyTavern.world_info with ${worldInfo.charLore.length} entries.`);
+			cachedWorldInfo = worldInfo;
+			return cachedWorldInfo;
+		}
+	}
 
-        if (globalWorldInfo instanceof HTMLSelectElement && globalWorldInfo.charLore) {
-            logInfo('getWorldInfo: found world_info on global object as HTMLSelectElement with charLore property.', { charLore: globalWorldInfo.charLore });
-            return { charLore: globalWorldInfo.charLore };
-        }
-
-        logWarn('getWorldInfo: found world_info on global object but it does not have a charLore property.', { worldInfo: globalWorldInfo });
-    }
-
-	logWarn('getWorldInfo: could not find world_info object.');
+	logInfo('getWorldInfo: could not find world_info.charLore.');
 	return undefined;
 }
 
@@ -1735,8 +1727,13 @@ function registerEventHandlers(): void {
 		logInfo('GROUP_WRAPPER_STARTED fired.');
 	});
 
-	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, async () => {
+	eventSource.on(eventTypes.WORLDINFO_ENTRIES_LOADED, async (...args: unknown[]) => {
 		logInfo('WORLDINFO_ENTRIES_LOADED fired.');
+		const payload = args[0] as { characterLore?: CharLoreSetting[] } | undefined;
+		if (payload?.characterLore) {
+			cachedWorldInfo = { charLore: payload.characterLore };
+			logInfo(`WORLDINFO_ENTRIES_LOADED: cached ${payload.characterLore.length} charLore entries from event payload.`);
+		}
 	});
 
 	eventSource.on(eventTypes.WORLDINFO_SCAN_DONE, () => {
