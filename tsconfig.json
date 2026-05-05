@@ -7,7 +7,12 @@
         "strict": true,
         "esModuleInterop": true,
         "sourceMap": true,
-        "forceConsistentCasingInFileNames": true
+        "forceConsistentCasingInFileNames": true,
+        "baseUrl": ".",
+        "paths": {
+            "scripts/*": ["../SillyTavern/public/scripts/*"],
+            "script.js": ["../SillyTavern/public/script.js"]
+        }
     },
     "include": [
         "src/**/*.ts",

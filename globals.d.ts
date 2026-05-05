@@ -8,3 +8,8 @@ import '../SillyTavern/public/global';
 declare global {
     // Add global type declarations here
 }
+
+export type CharLoreSetting = {
+    name: string;
+    extraBooks?: string[];
+};
